@@ -9,361 +9,484 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GOLD AI ANALYTICS PRO - Ultimate Institutional System</title>
+    <title>GOLD AI ANALYTICS PRO - Sniper 61.8% & RR 1:3 System</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Prompt', sans-serif; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #090d16; }
+        ::-webkit-scrollbar-track { background: #060911; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #f59e0b; }
     </style>
 </head>
-<body class="bg-[#060911] text-slate-100 antialiased min-h-screen p-3 md:p-6 selection:bg-amber-500 selection:text-slate-950">
-    <div class="max-w-[1600px] mx-auto space-y-5">
+<body class="bg-[#05080f] text-slate-100 antialiased min-h-screen p-3 md:p-5 selection:bg-amber-500 selection:text-slate-950">
+    <div class="max-w-[1650px] mx-auto space-y-4">
         
-        <!-- HEADER -->
-        <header class="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 shadow-xl backdrop-blur-md gap-4">
-            <div class="flex items-center gap-3">
-                <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-600 flex items-center justify-center shadow-lg shadow-amber-500/20 font-black text-slate-950 text-xl">
-                    AU
+        <!-- TOP HEADER & DAILY MASTER BIAS -->
+        <header class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-2xl backdrop-blur-md">
+            <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
+                
+                <!-- Brand Title -->
+                <div class="flex items-center gap-3.5">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-300 via-amber-500 to-yellow-600 flex items-center justify-center shadow-lg shadow-amber-500/25 font-black text-slate-950 text-xl shrink-0">
+                        XAU
+                    </div>
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h1 class="text-xl md:text-2xl font-black tracking-wide bg-gradient-to-r from-amber-200 via-amber-400 to-yellow-500 bg-clip-text text-transparent">
+                                GOLD AI SNIPER PRO
+                            </h1>
+                            <span class="px-2.5 py-0.5 text-[11px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full">
+                                ENTRY 61.8% • SL 78.6% • RR 1:3
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-0.5">
+                            ระบบวิเคราะห์จุดเข้าทองคำ XAUUSD แม่นยำสูง • ซิงค์กราฟ TradingView & คำนวณ Risk:Reward อัตโนมัติ
+                        </p>
+                    </div>
                 </div>
-                <div>
-                    <div class="flex items-center gap-2">
-                        <h1 class="text-xl md:text-2xl font-extrabold tracking-wide bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 bg-clip-text text-transparent">
-                            GOLD AI ANALYTICS PRO
-                        </h1>
-                        <span class="px-2 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-md">
-                            INSTITUTIONAL V3.0
+
+                <!-- Master Daily Bias Banner (เห็นชัดทันทีว่าวันนี้เล่นหน้าไหน) -->
+                <div class="flex flex-wrap items-center gap-3 w-full xl:w-auto justify-between xl:justify-end">
+                    <div class="bg-slate-950 border border-slate-800 px-4 py-2.5 rounded-xl flex items-center gap-3">
+                        <span class="text-xs text-slate-400">หน้าเทรดหลักวันนี้ (Daily Bias):</span>
+                        <span id="header-master-bias" class="px-3 py-1 rounded-lg text-xs font-extrabold bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center gap-1.5">
+                            🔻 SELL BIAS (เน้นดักเด้ง Short)
                         </span>
                     </div>
-                    <p class="text-xs text-slate-400">
-                        ระบบวิเคราะห์โครงสร้างราคาทองคำ XAUUSD • Golden Zone (61.8% - 78.6%) • Order Block & Macro AI
-                    </p>
-                </div>
-            </div>
 
-            <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-between lg:justify-end">
-                <div class="bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800 flex items-center gap-3">
-                    <div>
-                        <span class="text-[10px] text-slate-400 block">ราคาอ้างอิงตลาด (OANDA)</span>
-                        <span class="text-base font-extrabold text-amber-400">~$3,995.80</span>
+                    <div class="bg-slate-950 border border-slate-800 px-4 py-2.5 rounded-xl flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping"></span>
+                        <span class="w-2.5 h-2.5 -ml-5 bg-emerald-500 rounded-full"></span>
+                        <span class="text-xs font-bold text-emerald-400">OANDA:XAUUSD (Live)</span>
                     </div>
-                    <span class="text-xs px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 font-semibold border border-rose-500/30">
-                        Bearish Pressure
-                    </span>
                 </div>
-                <span class="inline-flex items-center px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-800/60">
-                    <span class="w-2 h-2 mr-2 bg-emerald-400 rounded-full animate-ping"></span>
-                    <span class="w-2 h-2 -ml-4 mr-2 bg-emerald-500 rounded-full"></span>
-                    AI & TradingView เชื่อมต่อสำเร็จ
-                </span>
             </div>
         </header>
 
-        <!-- MAIN GRID (LEFT: CHART, RIGHT: AI DASHBOARD) -->
+        <!-- MAIN WORKSPACE GRID -->
         <div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
             
-            <!-- ฝั่งซ้าย: กราฟ TradingView + กล่องวิเคราะห์ข่าวเศรษฐกิจ (8 ส่วน) -->
-            <div class="xl:col-span-8 space-y-5">
+            <!-- ฝั่งซ้าย: กราฟ TradingView + คู่มือกางเส้นจุดเข้าบนกราฟ + ปฏิทินวิเคราะห์ข่าว (7 ส่วน) -->
+            <div class="xl:col-span-7 space-y-5">
                 
                 <!-- กล่องกราฟ TradingView -->
-                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-2xl">
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-2xl space-y-3">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800/80 pb-3">
                         <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-                            <h2 class="text-base font-bold text-slate-200">
-                                กราฟเทคนิคอล XAUUSD (ซิงค์ตามปุ่มไทม์เฟรมอัตโนมัติ)
+                            <span class="w-3 h-3 rounded-full bg-amber-400 shadow-sm shadow-amber-400"></span>
+                            <h2 class="text-base font-bold text-slate-100">
+                                กราฟ TradingView (ซิงค์ตามปุ่ม Timeframe ด้านขวา)
                             </h2>
                         </div>
-                        <span class="text-xs text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
-                            💡 ทริค: กดเครื่องมือแถบซ้ายบนกราฟเพื่อกาง Fib Retracement เทียบจุดเข้า Golden Zone ได้เลย
-                        </span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[11px] bg-amber-500/15 text-amber-300 px-3 py-1 rounded-lg border border-amber-500/30 font-medium">
+                                💡 วิธีโชว์โซนบนกราฟ: กดปุ่ม <strong>Indicators</strong> ด้านบน ➔ พิมพ์ <strong>"Auto Fib Retracement"</strong>
+                            </span>
+                        </div>
                     </div>
-                    
+
+                    <!-- แถบป้ายราคาสำหรับกด Copy ไปวางเส้น Horizontal Line บนกราฟ -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800/90 text-xs">
+                        <div onclick="copyPrice('val-entry')" class="cursor-pointer p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 hover:border-cyan-400 transition flex justify-between items-center">
+                            <div>
+                                <span class="text-[10px] text-cyan-300 block">🎯 จุดเข้า (61.8%)</span>
+                                <span id="bar-entry" class="font-black text-cyan-400 text-sm">--</span>
+                            </div>
+                            <span class="text-[10px] bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded">คัดลอก</span>
+                        </div>
+                        <div onclick="copyPrice('val-sl')" class="cursor-pointer p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 hover:border-rose-400 transition flex justify-between items-center">
+                            <div>
+                                <span class="text-[10px] text-rose-300 block">🛑 Stop Loss (78.6%)</span>
+                                <span id="bar-sl" class="font-black text-rose-400 text-sm">--</span>
+                            </div>
+                            <span class="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded">คัดลอก</span>
+                        </div>
+                        <div onclick="copyPrice('val-tp1')" class="cursor-pointer p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 hover:border-emerald-400 transition flex justify-between items-center">
+                            <div>
+                                <span class="text-[10px] text-emerald-300 block">💰 TP 1 (RR 1:2)</span>
+                                <span id="bar-tp1" class="font-black text-emerald-400 text-sm">--</span>
+                            </div>
+                            <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded">คัดลอก</span>
+                        </div>
+                        <div onclick="copyPrice('val-tp2')" class="cursor-pointer p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 hover:border-amber-400 transition flex justify-between items-center">
+                            <div>
+                                <span class="text-[10px] text-amber-300 block">🚀 TP 2 (RR 1:3)</span>
+                                <span id="bar-tp2" class="font-black text-amber-400 text-sm">--</span>
+                            </div>
+                            <span class="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">คัดลอก</span>
+                        </div>
+                    </div>
+
+                    <!-- ตัวกราฟ TradingView -->
                     <div class="tradingview-widget-container rounded-xl overflow-hidden border border-slate-800" style="height:560px; width:100%;">
                         <div id="tradingview_chart" style="height:100%; width:100%;"></div>
                     </div>
                 </div>
 
-                <!-- กล่องวิเคราะห์เศรษฐกิจมหภาคและข่าวสาร (Macro & News AI Analysis) -->
+                <!-- กล่องวิเคราะห์เศรษฐกิจมหภาคและตารางข่าว (Macro & Economic Impact) -->
                 <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-4">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-800 pb-3 gap-2">
                         <div class="flex items-center gap-2">
-                            <span class="px-2 py-1 rounded-lg bg-amber-500/20 text-amber-400 text-xs font-bold border border-amber-500/30">
-                                MACRO & NEWS AI
+                            <span class="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-400 text-xs font-extrabold border border-amber-500/30">
+                                FOREX FACTORY & MACRO AI
                             </span>
                             <h2 class="text-base font-bold text-slate-100">
-                                วิเคราะห์ข่าวและปัจจัยพื้นฐานเศรษฐกิจโลกต่อราคาทองคำ
+                                วิเคราะห์ปัจจัยข่าวและระดับความผันผวนของทองคำ
                             </h2>
                         </div>
-                        <span class="text-xs text-slate-400">อัปเดตสถานะปัจจัยพื้นฐานประจำวัน</span>
+                        <span id="current-date-display" class="text-xs text-amber-400 font-semibold"></span>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <!-- ข่าวที่ 1: ดอกเบี้ย Fed & Bond Yield -->
-                        <div class="bg-slate-950/90 p-4 rounded-xl border border-slate-800/80 space-y-2 hover:border-rose-500/40 transition">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs">
+                        <!-- สถานะข่าวที่ 1 -->
+                        <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
                             <div class="flex justify-between items-center">
-                                <span class="text-xs font-bold text-slate-300">นโยบายดอกเบี้ย Fed & ดอลลาร์</span>
-                                <span class="px-2 py-0.5 text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded">
-                                    กดดันทองคำ (Bearish)
+                                <span class="font-bold text-slate-200">ดัชนีดอลลาร์ (DXY) & Fed</span>
+                                <span class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold text-[10px]">
+                                    High Impact (กดดันทอง)
                                 </span>
                             </div>
-                            <p class="text-xs text-slate-400 leading-relaxed">
-                                อัตราผลตอบแทนพันธบัตรสหรัฐฯ (US Bond Yield) และดัชนีดอลลาร์ (DXY) แข็งค่าขึ้นระยะสั้นหลังตลาดประเมินว่า Fed อาจคงดอกเบี้ยระดับสูงนานกว่าคาด กดดันให้ทองคำเกิดการเทขายทำกำไรและพักฐานลงมา
+                            <p class="text-slate-400 leading-relaxed">
+                                ตลาดกังวลเรื่องอัตราผลตอบแทนพันธบัตรสหรัฐฯ ที่ทรงตัวสูง ส่งผลให้มีแรงเทขายทองคำเมื่อราคาดีดตัวขึ้น (เน้นฝั่ง Sell ได้เปรียบกว่า)
                             </p>
                         </div>
 
-                        <!-- ข่าวที่ 2: เงินเฟ้อ CPI & ตลาดแรงงาน NFP -->
-                        <div class="bg-slate-950/90 p-4 rounded-xl border border-slate-800/80 space-y-2 hover:border-amber-500/40 transition">
+                        <!-- สถานะข่าวที่ 2 (ระดับปานกลาง) -->
+                        <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
                             <div class="flex justify-between items-center">
-                                <span class="text-xs font-bold text-slate-300">เงินเฟ้อ (CPI) & จ้างงาน (NFP)</span>
-                                <span class="px-2 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded">
-                                    ผันผวนสูง (High Impact)
+                                <span class="font-bold text-slate-200">สภาพคล่องระหว่างวัน</span>
+                                <span class="px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 font-bold text-[10px]">
+                                    Medium (ผันผวนปานกลาง)
                                 </span>
                             </div>
-                            <p class="text-xs text-slate-400 leading-relaxed">
-                                ตัวเลขเศรษฐกิจสหรัฐฯ ออกมาแข็งแกร่งกว่าคาดการณ์ ทำให้เกิดแรงเทขายปรับพอร์ตของสถาบันการเงิน แนะนำให้ระมัดระวังการเข้าออเดอร์ช่วงตลาดอเมริกาเปิด และรอเข้าเฉพาะจุด Golden Zone เท่านั้น
+                            <p class="text-slate-400 leading-relaxed">
+                                ช่วงตลาดเอเชีย-ลอนดอน ราคาอาจแกว่งตัวสะสมพลังในกรอบ (Sideway) ห้ามไล่ราคาตรงกลางกรอบ ให้ตั้ง Pending Order รอที่ 61.8% เท่านั้น
                             </p>
                         </div>
 
-                        <!-- ข่าวที่ 3: ธนาคารกลาง & ภูมิรัฐศาสตร์ -->
-                        <div class="bg-slate-950/90 p-4 rounded-xl border border-slate-800/80 space-y-2 hover:border-emerald-500/40 transition">
+                        <!-- สถานะข่าวที่ 3 -->
+                        <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
                             <div class="flex justify-between items-center">
-                                <span class="text-xs font-bold text-slate-300">แรงซื้อธนาคารกลาง & ความตึงเครียด</span>
-                                <span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded">
-                                    หนุนระยะยาว (Macro Bullish)
+                                <span class="font-bold text-slate-200">แผนรับมือตัวเลข CPI / NFP</span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold text-[10px]">
+                                    Sniper Rule 1:3
                                 </span>
                             </div>
-                            <p class="text-xs text-slate-400 leading-relaxed">
-                                แม้ภาพระยะสั้น-กลางจะมีแรงเทขายปรับฐานลงมาแรง แต่แรงซื้อสะสมทองคำแท่งจากธนาคารกลางทั่วโลกและความเสี่ยงภูมิรัฐศาสตร์ยังเป็นฐานแนวรับสำคัญในระดับมหภาค
+                            <p class="text-slate-400 leading-relaxed">
+                                หากตัวเลขสหรัฐฯ ออกมาสูงกว่าคาด = ทองคำลงต่อ (เข้าแผน Sell) / หากต่ำกว่าคาด = ทองคำดีดขึ้นแรง ให้คุม Stop Loss ที่ระดับ 78.6% อย่างเคร่งครัด
                             </p>
                         </div>
-                    </div>
-
-                    <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start sm:items-center gap-3">
-                        <span class="text-lg">🤖</span>
-                        <p class="text-xs text-amber-200 leading-relaxed">
-                            <strong class="text-amber-400">สรุปกลยุทธ์จาก AI:</strong> ปัจจัยข่าวระยะสั้นยังกดดันให้ทองคำเป็นฝั่งขาลง (Bearish Correction) ห้ามรีบสวนซื้อ (Buy) เด็ดขาด ให้เน้นดักรอจังหวะราคารีบาวด์เด้งขึ้นมาที่โซน <strong>Fibonacci 61.8% - 78.6% (Golden Zone)</strong> แล้วเปิดหน้าขาย (Short/Sell) ตามโครงสร้างตลาด
-                        </p>
                     </div>
                 </div>
             </div>
 
-            <!-- ฝั่งขวา: แผงควบคุม AI & Multi-Timeframe Matrix (4 ส่วน) -->
-            <div class="xl:col-span-4 space-y-5">
+            <!-- ฝั่งขวา: แผงควบคุม Multi-Timeframe + การ์ดจุดเข้า Sniper 61.8% & RR 1:3 (5 ส่วน) -->
+            <div class="xl:col-span-5 space-y-5">
                 
-                <!-- กล่องปุ่มเลือกไทม์เฟรม + วิเคราะห์จุดเข้า Golden Zone -->
+                <!-- 1. ปุ่มเลือกไทม์เฟรมและตัวกรองสถานะตลาด -->
                 <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-4">
                     <div class="flex justify-between items-center border-b border-slate-800 pb-3">
                         <div>
-                            <h2 class="text-base font-bold text-amber-400">ระบบวิเคราะห์แยกตามไทม์เฟรม</h2>
-                            <p class="text-[11px] text-slate-400">กดปุ่มด้านล่างเพื่อดูจุดเข้าและเปลี่ยนกราฟอัตโนมัติ</p>
+                            <h2 class="text-base font-bold text-amber-400">1. เลือกไทม์เฟรมที่ต้องการเทรด</h2>
+                            <p class="text-[11px] text-slate-400">กดปุ่มเพื่อซิงค์กราฟและคำนวณแผน Entry 61.8% / SL 78.6%</p>
                         </div>
-                        <span id="active-tf-badge" class="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-amber-500 text-slate-950">
+                        <span id="active-tf-badge" class="px-3 py-1 rounded-xl text-xs font-black bg-amber-500 text-slate-950 shadow">
                             TF: 1H
                         </span>
                     </div>
 
-                    <!-- ปุ่มกดเลือก Timeframe (Interactive Buttons) -->
-                    <div class="grid grid-cols-3 gap-2">
-                        <button onclick="selectTimeframe('1m')" id="btn-1m" class="tf-btn py-2.5 px-3 rounded-xl text-xs font-bold border transition-all duration-150">
-                            1 นาที (1M)
-                        </button>
-                        <button onclick="selectTimeframe('5m')" id="btn-5m" class="tf-btn py-2.5 px-3 rounded-xl text-xs font-bold border transition-all duration-150">
-                            5 นาที (5M)
-                        </button>
-                        <button onclick="selectTimeframe('15m')" id="btn-15m" class="tf-btn py-2.5 px-3 rounded-xl text-xs font-bold border transition-all duration-150">
-                            15 นาที (15M)
-                        </button>
-                        <button onclick="selectTimeframe('1h')" id="btn-1h" class="tf-btn py-2.5 px-3 rounded-xl text-xs font-bold border transition-all duration-150">
-                            1 ชั่วโมง (1H)
-                        </button>
-                        <button onclick="selectTimeframe('4h')" id="btn-4h" class="tf-btn py-2.5 px-3 rounded-xl text-xs font-bold border transition-all duration-150">
-                            4 ชั่วโมง (4H)
-                        </button>
-                        <button onclick="selectTimeframe('daily')" id="btn-daily" class="tf-btn py-2.5 px-3 rounded-xl text-xs font-bold border transition-all duration-150">
-                            รายวัน (Daily)
-                        </button>
+                    <!-- ปุ่ม Timeframe 6 ปุ่ม -->
+                    <div class="grid grid-cols-3 sm:grid-cols-6 xl:grid-cols-3 gap-2">
+                        <button onclick="selectTimeframe('1m')" id="btn-1m" class="tf-btn py-2.5 px-3 rounded-xl text-xs font-bold border transition">1 นาที (1M)</button>
+                        <button onclick="selectTimeframe('5m')" id="btn-5m" class="tf-btn py-2.5 px-3 rounded-xl text-xs font-bold border transition">5 นาที (5M)</button>
+                        <button onclick="selectTimeframe('15m')" id="btn-15m" class="tf-btn py-2.5 px-3 rounded-xl text-xs font-bold border transition">15 นาที (15M)</button>
+                        <button onclick="selectTimeframe('1h')" id="btn-1h" class="tf-btn py-2.5 px-3 rounded-xl text-xs font-bold border transition">1 ชั่วโมง (1H)</button>
+                        <button onclick="selectTimeframe('4h')" id="btn-4h" class="tf-btn py-2.5 px-3 rounded-xl text-xs font-bold border transition">4 ชั่วโมง (4H)</button>
+                        <button onclick="selectTimeframe('daily')" id="btn-daily" class="tf-btn py-2.5 px-3 rounded-xl text-xs font-bold border transition">รายวัน (Daily)</button>
                     </div>
 
-                    <!-- สถานะตลาดของไทม์เฟรมที่เลือก -->
-                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                    <!-- กล่องแสดงสถานะเทรนด์ & ความผันผวนของไทม์เฟรมที่เลือก -->
+                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2.5 text-xs">
                         <div class="flex justify-between items-center">
-                            <span class="text-xs text-slate-400">โครงสร้างตลาด (Structure):</span>
-                            <span id="detail-structure" class="px-2.5 py-1 rounded-md text-xs font-bold">--</span>
+                            <span class="text-slate-400">สถานะโครงสร้างตลาด:</span>
+                            <span id="tf-structure-badge" class="px-2.5 py-1 rounded-md font-bold">--</span>
                         </div>
                         <div class="flex justify-between items-center">
-                            <span class="text-xs text-slate-400">คำแนะนำแอคชั่น (AI Signal):</span>
-                            <span id="detail-action" class="text-xs font-extrabold text-amber-400">--</span>
+                            <span class="text-slate-400">ระดับความผันผวน (Volatility):</span>
+                            <span id="tf-volatility" class="font-bold text-slate-200">--</span>
                         </div>
                         <div class="flex justify-between items-center">
-                            <span class="text-xs text-slate-400">ความได้เปรียบเชิงสถิติ (Win Rate):</span>
-                            <span id="detail-winrate" class="text-xs font-bold text-emerald-400">--</span>
+                            <span class="text-slate-400">หน้าเล่นที่ได้เปรียบ (Bias):</span>
+                            <span id="tf-bias-text" class="font-extrabold text-sm">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. การ์ดแผนการเทรด SNIPER SETUP (Entry 61.8% | SL 78.6% | TP1 1:2 | TP2 1:3) -->
+                <div class="bg-slate-900/90 border border-amber-500/40 rounded-2xl p-5 shadow-2xl space-y-4 relative overflow-hidden">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                        <div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-400 block">GOLDEN ZONE SNIPER</span>
+                            <h2 class="text-lg font-black text-slate-100">2. แผนจุดเข้าเทรด (RR 1:2 & 1:3)</h2>
+                        </div>
+                        <span id="setup-direction-badge" class="px-3 py-1.5 rounded-xl text-xs font-black">--</span>
+                    </div>
+
+                    <!-- แจ้งเตือนกรณี Sideway ห้ามเทรด -->
+                    <div id="sideway-warning" class="hidden bg-yellow-500/15 border border-yellow-500/50 rounded-xl p-3.5 text-xs text-yellow-200 space-y-1">
+                        <div class="font-extrabold text-yellow-400 text-sm">⚠️ เตือนภัยไซด์เวย์ / ความผันผวนกลางกรอบ!</div>
+                        <p>ไทม์เฟรมนี้ราคากำลังวิ่งสะสมพลังออกข้าง (Sideway) แนะนำให้ <strong>"นั่งทับมือ"</strong> รอให้กราฟเบรกเอาต์เลือกทางชัดเจน หรือสลับไปดูจุดเข้าที่ไทม์เฟรม 15M / 1H แทนครับ</p>
+                    </div>
+
+                    <!-- ข้อมูล Swing High / Swing Low ที่ใช้วัด Fibonacci -->
+                    <div class="flex justify-between items-center bg-slate-950 px-3.5 py-2.5 rounded-xl border border-slate-800 text-xs">
+                        <span class="text-slate-400">กรอบสวิงที่ใช้วัด Fib:</span>
+                        <span id="setup-swing-range" class="font-bold text-amber-300">--</span>
+                    </div>
+
+                    <!-- ตารางการ์ด 4 จุดหลัก: ENTRY, SL, TP1, TP2 -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        
+                        <!-- จุดเข้า ENTRY (61.8%) -->
+                        <div class="bg-gradient-to-br from-cyan-950/50 to-slate-950 p-4 rounded-xl border border-cyan-500/50 space-y-1">
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-extrabold text-cyan-300">🎯 จุดเข้า (ENTRY 61.8%)</span>
+                                <span class="text-[10px] bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded font-bold">ไม้เดียวเน้นๆ</span>
+                            </div>
+                            <div id="val-entry" class="text-2xl font-black text-cyan-400 tracking-tight">--</div>
+                            <p class="text-[11px] text-slate-400">ตั้งรอ Pending Order ที่ระดับ Fib 61.8%</p>
+                        </div>
+
+                        <!-- จุดตัดขาดทุน STOP LOSS (78.6%) -->
+                        <div class="bg-gradient-to-br from-rose-950/50 to-slate-950 p-4 rounded-xl border border-rose-500/50 space-y-1">
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-extrabold text-rose-300">🛑 ตัดขาดทุน (SL 78.6%)</span>
+                                <span id="val-risk-pts" class="text-[10px] bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded font-bold">Risk: --</span>
+                            </div>
+                            <div id="val-sl" class="text-2xl font-black text-rose-400 tracking-tight">--</div>
+                            <p class="text-[11px] text-slate-400">ยอมแพ้ทันทีหากราคาหลุด Fib 78.6%</p>
+                        </div>
+
+                        <!-- เป้าทำกำไรที่ 1: TP1 (RR 1:2) -->
+                        <div class="bg-gradient-to-br from-emerald-950/50 to-slate-950 p-4 rounded-xl border border-emerald-500/50 space-y-1">
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-extrabold text-emerald-300">💰 เป้าแรก TP 1 (RR 1:2)</span>
+                                <span id="val-tp1-pts" class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-bold">+-- จุด</span>
+                            </div>
+                            <div id="val-tp1" class="text-2xl font-black text-emerald-400 tracking-tight">--</div>
+                            <p class="text-[11px] text-slate-400">แบ่งปิดกำไร 50% และบังหน้าทุน (BE)</p>
+                        </div>
+
+                        <!-- เป้าทำกำไรที่ 2: TP2 (RR 1:3) -->
+                        <div class="bg-gradient-to-br from-amber-950/50 to-slate-950 p-4 rounded-xl border border-amber-500/60 space-y-1">
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-extrabold text-amber-300">🚀 เป้าหลัก TP 2 (RR 1:3)</span>
+                                <span id="val-tp2-pts" class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-bold">+-- จุด</span>
+                            </div>
+                            <div id="val-tp2" class="text-2xl font-black text-amber-400 tracking-tight">--</div>
+                            <p class="text-[11px] text-slate-400">เป้าทำกำไรเต็มระบบ 3 เท่าของความเสี่ยง</p>
                         </div>
                     </div>
 
-                    <!-- โซนราคา Golden Zone (61.8% & 78.6%) และ Order Block -->
-                    <div class="space-y-2.5">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-amber-300">🎯 โซนเฝ้าระวัง Golden Zone & จุดเข้าเทรด</span>
-                            <span id="detail-swing" class="text-[11px] text-slate-400">Swing: --</span>
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-2.5">
-                            <div class="bg-gradient-to-br from-slate-950 to-slate-900 p-3.5 rounded-xl border border-amber-500/40 shadow-inner">
-                                <span class="text-[11px] text-amber-400 font-bold block">Fibonacci 61.8% (จุดเข้าที่ 1)</span>
-                                <span id="detail-fib618" class="text-lg font-black text-cyan-400 mt-0.5 block">--</span>
-                            </div>
-                            <div class="bg-gradient-to-br from-slate-950 to-slate-900 p-3.5 rounded-xl border border-amber-500/40 shadow-inner">
-                                <span class="text-[11px] text-amber-400 font-bold block">Fibonacci 78.6% (จุดเข้าที่ 2)</span>
-                                <span id="detail-fib786" class="text-lg font-black text-purple-400 mt-0.5 block">--</span>
-                            </div>
-                        </div>
-
-                        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 text-xs">
-                            <div class="flex justify-between">
-                                <span class="text-slate-400">📦 โซน Order Block (OB):</span>
-                                <span id="detail-ob" class="font-bold text-amber-300">--</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-slate-400">🛑 จุดตัดขาดทุน (Stop Loss):</span>
-                                <span id="detail-sl" class="font-bold text-rose-400">--</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-slate-400">💰 เป้าทำกำไร (Take Profit):</span>
-                                <span id="detail-tp" class="font-bold text-emerald-400">--</span>
-                            </div>
+                    <!-- แผนผังจำลองระดับราคา (Visual Price Ladder) เพื่อให้เห็นภาพเทียบกับกราฟ -->
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                        <span class="text-xs font-bold text-slate-300 block">📐 แผนผังลำดับเส้นราคา (เทียบใส่กราฟ TradingView):</span>
+                        <div class="relative pt-2 pb-1 space-y-1.5 text-xs font-mono" id="price-ladder-visual">
+                            <!-- สร้างอัตโนมัติด้วย JS -->
                         </div>
                     </div>
 
-                    <!-- คำอธิบายเจาะลึกภาษาไทย -->
-                    <div class="space-y-1.5">
-                        <span class="text-xs font-bold text-amber-400 block">🧠 วิเคราะห์แผนการเทรดจาก AI:</span>
-                        <p id="detail-reason" class="text-xs text-slate-200 bg-slate-950 p-3.5 rounded-xl border border-slate-800 leading-relaxed">
+                    <!-- คำอธิบายแผนการเทรดจาก AI -->
+                    <div class="space-y-1">
+                        <span class="text-xs font-bold text-amber-400 block">🧠 วิเคราะห์เหตุผลและจังหวะเข้าทำกำไร:</span>
+                        <p id="setup-reason" class="text-xs text-slate-200 bg-slate-950 p-3.5 rounded-xl border border-slate-800 leading-relaxed">
                             --
                         </p>
                     </div>
                 </div>
 
-                <!-- ตารางสรุปภาพรวมทุกไทม์เฟรม (Multi-Timeframe Matrix Overview) -->
+                <!-- 3. เครื่องคิดเลขคำนวณ Golden Zone สด (ปรับ Swing High / Low เองได้ตามกราฟจริง) -->
+                <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-3">
+                    <div class="border-b border-slate-800 pb-2">
+                        <h3 class="text-sm font-bold text-amber-400">⚡ เครื่องคำนวณจุดเข้า 61.8% & RR 1:3 แบบกำหนดสวิงเอง</h3>
+                        <p class="text-[11px] text-slate-400">ใส่ราคา High และ Low จากกราฟจริงเพื่อให้ระบบคำนวณจุดเข้า/SL/TP ให้อัตโนมัติ</p>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 text-xs">
+                        <div>
+                            <label class="text-slate-400 block mb-1">ทิศทางเทรนด์</label>
+                            <select id="calc-trend" onchange="runCustomCalc()" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-slate-100 font-bold">
+                                <option value="SELL">ขาลง (ดัก Sell)</option>
+                                <option value="BUY">ขาขึ้น (ดัก Buy)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-slate-400 block mb-1">Swing High ($)</label>
+                            <input type="number" id="calc-high" step="0.1" value="4145.00" oninput="runCustomCalc()" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-slate-100 font-bold">
+                        </div>
+                        <div>
+                            <label class="text-slate-400 block mb-1">Swing Low ($)</label>
+                            <input type="number" id="calc-low" step="0.1" value="3992.20" oninput="runCustomCalc()" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-slate-100 font-bold">
+                        </div>
+                    </div>
+                    <button onclick="applyCustomToMainCard()" class="w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl transition shadow">
+                        🔄 นำค่าที่คำนวณใหม่ไปแสดงบนการ์ดหลักด้านบน
+                    </button>
+                </div>
+
+                <!-- 4. ตารางสรุปภาพรวมทุกไทม์เฟรม (Multi-Timeframe Matrix) -->
                 <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-3">
                     <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">
-                        📊 ตารางสรุปสถานะทุกไทม์เฟรม (Matrix Overview)
+                        📊 สรุปสถานะทั้ง 6 ไทม์เฟรม (Multi-Timeframe Matrix)
                     </h3>
-                    <div class="space-y-2 text-xs" id="matrix-table">
-                        <!-- สร้างอัตโนมัติด้วย JS -->
-                    </div>
+                    <div class="space-y-2 text-xs" id="matrix-overview-list"></div>
                 </div>
 
             </div>
         </div>
     </div>
 
-    <!-- TradingView Script -->
+    <!-- แจ้งเตือนเมื่อคัดลอกราคาสำเร็จ -->
+    <div id="toast-copy" class="fixed bottom-5 right-5 hidden bg-emerald-500 text-slate-950 px-4 py-2.5 rounded-xl font-extrabold text-xs shadow-2xl">
+        ✅ คัดลอกราคาเรียบร้อย! นำไปวางเส้นบนกราฟได้เลย
+    </div>
+
+    <!-- TradingView Widget Script -->
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script>
-        // ฐานข้อมูลการวิเคราะห์แยกตาม Timeframe (อ้างอิงราคาตลาดจริง ~3,995.80)
-        const timeframeDatabase = {
+        // ฟังก์ชันคำนวณคณิตศาสตร์ Fibonacci 61.8%, SL 78.6%, TP1 (1:2), TP2 (1:3)
+        function calculateSniperLevels(direction, swingHigh, swingLow) {
+            const range = swingHigh - swingLow;
+            let entry618, sl786, risk, tp1, tp2;
+
+            if (direction === 'SELL') {
+                // เทรนด์ขาลง: วัดจาก High ลงหา Low -> รอเด้งขึ้นไปที่ 61.8% เพื่อ Sell, SL ที่ 78.6%
+                entry618 = swingLow + (range * 0.618);
+                sl786 = swingLow + (range * 0.786);
+                risk = Math.abs(sl786 - entry618); // ระยะความเสี่ยง 1R
+                tp1 = entry618 - (risk * 2);      // เป้า 1:2
+                tp2 = entry618 - (risk * 3);      // เป้า 1:3
+            } else {
+                // เทรนด์ขาขึ้น: วัดจาก Low ขึ้นหา High -> รอย่อลงมาที่ 61.8% เพื่อ Buy, SL ที่ 78.6%
+                entry618 = swingHigh - (range * 0.618);
+                sl786 = swingHigh - (range * 0.786);
+                risk = Math.abs(entry618 - sl786); // ระยะความเสี่ยง 1R
+                tp1 = entry618 + (risk * 2);      // เป้า 1:2
+                tp2 = entry618 + (risk * 3);      // เป้า 1:3
+            }
+
+            return {
+                entry: entry618.toFixed(2),
+                sl: sl786.toFixed(2),
+                tp1: tp1.toFixed(2),
+                tp2: tp2.toFixed(2),
+                riskDollar: risk.toFixed(2),
+                reward1Dollar: (risk * 2).toFixed(2),
+                reward2Dollar: (risk * 3).toFixed(2)
+            };
+        }
+
+        // ข้อมูลโครงสร้างราคาแยกตาม Timeframe (อ้างอิงราคาตลาด XAUUSD ปัจจุบัน ~$3,995.80)
+        const timeframeConfigs = {
             '1m': {
                 label: '1 นาที (1M)',
                 tvInterval: '1',
+                direction: 'NEUTRAL',
+                calcDir: 'SELL',
+                swingHigh: 4001.20,
+                swingLow: 3992.20,
                 structure: 'ไซด์เวย์กรอบแคบ (Sideway)',
-                structureStyle: 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/40',
-                action: '⛔ ห้ามเข้าเทรด (ยังไม่เลือกทาง)',
-                winrate: '52.0% (ความเสี่ยงสูง)',
-                swing: 'High $4,001.20 / Low $3,992.20',
-                fib618: '$3,997.75',
-                fib786: '$3,999.25',
-                ob: '$3,998.50 - $4,000.50 (Supply ย่อย)',
-                sl: '$4,003.00 (เหนือ High ล่าสุด)',
-                tp: '$3,992.50 / $3,988.00',
-                reason: 'ในไทม์เฟรม 1 นาที กราฟกำลังวิ่งออกข้างสะสมพลัง (Sideway) ในกรอบแคบๆ แถว $3,992 - $4,000 สัญญาณหลอกเยอะมาก ยังไม่แนะนำให้กดออเดอร์ ให้รอราคารีบาวด์ขึ้นไปทดสอบโซน Golden Zone ($3,997.75 - $3,999.25) หรือรอเบรกกรอบชัดเจนก่อนครับ'
+                structureClass: 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/40',
+                volatility: 'ผันผวนปานกลาง-ต่ำ (แกว่งในกรอบ)',
+                biasText: '🟡 NEUTRAL (นั่งทับมือ ห้ามเทรด)',
+                biasColor: 'text-yellow-400',
+                isSideway: true,
+                reason: 'กราฟ 1 นาทีกำลังวิ่งออกข้างสะสมพลัง (Sideway) กลางกรอบ ไม่มีความได้เปรียบเชิงสถิติ แนะนำให้นั่งทับมือพักการเทรดในไทม์เฟรมนี้ หรือถ้าต้องการตั้งดัก ให้รอที่กรอบบน 61.8% เท่านั้น'
             },
             '5m': {
                 label: '5 นาที (5M)',
                 tvInterval: '5',
+                direction: 'SELL',
+                calcDir: 'SELL',
+                swingHigh: 4016.00,
+                swingLow: 3992.20,
                 structure: 'ขาลงระยะสั้น (Minor Downtrend)',
-                structureStyle: 'bg-rose-500/20 text-rose-400 border border-rose-500/40',
-                action: '🔻 รอเด้ง Sell ในโซน Golden Zone',
-                winrate: '81.5% (Scalping Setup)',
-                swing: 'High $4,016.00 / Low $3,992.20',
-                fib618: '$4,006.90',
-                fib786: '$4,010.90',
-                ob: '$4,008.00 - $4,012.50 (Bearish OB 5M)',
-                sl: '$4,017.50',
-                tp: '$3,993.00 / $3,985.00',
-                reason: 'ไทม์เฟรม 5 นาที โครงสร้างทำจุดต่ำสุดใหม่ (Lower Low) ชัดเจน เหมาะสำหรับสายซิ่งเก็งกำไรสั้นๆ โดยห้ามไล่ราคาข้างล่างเด็ดขาด ให้ตั้งรอ Sell Limit เมื่อราคาดีดตัวกลับขึ้นมาเข้าโซน 61.8% ($4,006.90) ถึง 78.6% ($4,010.90) ซึ่งทับซ้อนกับก้อน Order Block พอดี'
+                structureClass: 'bg-rose-500/20 text-rose-400 border border-rose-500/40',
+                volatility: 'ผันผวนปานกลาง (เหมาะเก็บสั้น)',
+                biasText: '🔴 SELL BIAS (รอเด้ง Short ที่ 61.8%)',
+                biasColor: 'text-rose-400',
+                isSideway: false,
+                reason: 'ไทม์เฟรม 5 นาทีทำโครงสร้าง Lower Low ลงมาชัดเจน แผนคือตั้ง Sell Limit ที่โซน Fib 61.8% ($4,006.91) วาง Stop Loss ที่ระดับ 78.6% ($4,010.91) ความเสี่ยงแคบเพียง $4.00 เพื่อลุ้นเป้า TP 1:2 และ 1:3'
             },
             '15m': {
                 label: '15 นาที (15M)',
                 tvInterval: '15',
-                structure: 'เทรนด์ขาลงชัดเจน (Downtrend)',
-                structureStyle: 'bg-rose-500/20 text-rose-400 border border-rose-500/40',
-                action: '🎯 ดักเปิด Short ที่ Golden Zone',
-                winrate: '86.8% (Intraday แนะนำ)',
-                swing: 'High $4,035.00 / Low $3,992.20',
-                fib618: '$4,018.65',
-                fib786: '$4,025.85',
-                ob: '$4,020.00 - $4,027.00 (Institutional OB)',
-                sl: '$4,037.00',
-                tp: '$3,992.00 / $3,975.00',
-                reason: 'ไทม์เฟรม 15 นาที เกิดการพังทลายโครงสร้างขาลง (Break of Structure) อย่างรุนแรง จุดเข้าที่ได้เปรียบที่สุดของวันคือการรอให้กราฟย่อตัวขึ้นไปหา Golden Zone ระหว่าง $4,018.65 - $4,025.85 แล้วมองหาแท่งเทียนกลับตัวเพื่อเปิดฝั่ง Sell ตามเทรนด์'
+                direction: 'SELL',
+                calcDir: 'SELL',
+                swingHigh: 4035.00,
+                swingLow: 3992.20,
+                structure: 'เทรนด์ขาลงชัดเจน (Intraday Bearish)',
+                structureClass: 'bg-rose-500/20 text-rose-400 border border-rose-500/40',
+                volatility: 'ผันผวนกำลังดี (แนะนำเทรดระหว่างวัน)',
+                biasText: '🔴 SELL BIAS (ดักทุบที่ 61.8%)',
+                biasColor: 'text-rose-400',
+                isSideway: false,
+                reason: 'ไทม์เฟรม 15 นาทีเป็นจังหวะ Intraday ที่คมที่สุด รอราคารีบาวด์ขึ้นมาแตะจุด Entry 61.8% ($4,018.65) แล้วตัดขาดทุนทันทีหากทะลุ 78.6% ($4,025.84) เก็บกำไรตามสัดส่วน RR 1:2 ที่ $4,004.27 และ RR 1:3 ที่ $3,997.08'
             },
             '1h': {
                 label: '1 ชั่วโมง (1H)',
                 tvInterval: '60',
-                structure: 'ขาลงหลัก / รอรีบาวด์ (Bearish Trend)',
-                structureStyle: 'bg-rose-500/20 text-rose-400 border border-rose-500/40',
-                action: '🔥 โซนทองคำ! รอ Sell ที่ 61.8% - 78.6%',
-                winrate: '91.2% (High Probability)',
-                swing: 'High $4,145.00 / Low $3,992.20',
-                fib618: '$4,086.60',
-                fib786: '$4,112.30',
-                ob: '$4,090.00 - $4,115.00 (Major 1H Supply OB)',
-                sl: '$4,150.00',
-                tp: '$3,995.00 / $3,960.00',
-                reason: 'ไทม์เฟรม 1 ชั่วโมง เป็นคลื่นขาลงลูกใหญ่ที่ทุบลงมาจาก $4,145 ลงมาถึง $3,992 ตอนนี้ราคากำลังอยู่ในโซนด้านล่าง หากมีการดีดตัวพักฐานขึ้นมาในกรอบ Golden Zone ($4,086.60 - $4,112.30) จะเป็นจุดเข้าสะสมไม้ Sell ระดับสถาบันที่คุ้มค่าคุ้มความเสี่ยง (RR) สูงมาก'
+                direction: 'SELL',
+                calcDir: 'SELL',
+                swingHigh: 4145.00,
+                swingLow: 3992.20,
+                structure: 'ขาลงหลัก / รอรีบาวด์ (Major Bearish)',
+                structureClass: 'bg-rose-500/20 text-rose-400 border border-rose-500/40',
+                volatility: 'ผันผวนสูง (High Probability Setup)',
+                biasText: '🔴 STRONG SELL BIAS (โซนสถาบัน 61.8%)',
+                biasColor: 'text-rose-400',
+                isSideway: false,
+                reason: 'ไทม์เฟรม 1 ชั่วโมงเกิดแรงเทขายระดับสถาบันจาก $4,145 ลงมาที่ $3,992.20 จุดเข้าไม้เดียวที่คมที่สุดคือการดัก Sell Limit ที่ Fib 61.8% ($4,086.63) โดยมีจุด SL ที่ 78.6% ($4,112.30) และรันเทรนด์ลงไปกินคำใหญ่ระดับ RR 1:3'
             },
             '4h': {
                 label: '4 ชั่วโมง (4H)',
                 tvInterval: '240',
-                structure: 'ขาลงระดับมหภาค (Macro Bearish)',
-                structureStyle: 'bg-rose-500/20 text-rose-400 border border-rose-500/40',
-                action: '📉 คุมหน้า Sell เป็นหลัก (ห้ามสวนเทรนด์)',
-                winrate: '89.5% (Swing Trade)',
-                swing: 'High $4,210.00 / Low $3,992.20',
-                fib618: '$4,126.80',
-                fib786: '$4,163.40',
-                ob: '$4,135.00 - $4,170.00 (4H Order Block)',
-                sl: '$4,215.00',
-                tp: '$3,980.00 / $3,920.00',
-                reason: 'ภาพ 4 ชั่วโมง แท่งเทียนสีแดงทิ้งตัวลงมาอย่างหนักหน่วง ยืนยันว่าแรงขายคุมตลาดสมบูรณ์แบบ การเข้าเทรดทุกไทม์เฟรมย่อยควรเทรดฝั่งขาลง (Sell) ให้สอดคล้องกับ 4H โดยมีแนวต้านสำคัญระดับ Golden Zone อยู่ที่ $4,126.80 - $4,163.40'
+                direction: 'SELL',
+                calcDir: 'SELL',
+                swingHigh: 4210.00,
+                swingLow: 3992.20,
+                structure: 'ขาลงระดับมหภาค (Macro Downtrend)',
+                structureClass: 'bg-rose-500/20 text-rose-400 border border-rose-500/40',
+                volatility: 'ผันผวนสูง (Swing Trade)',
+                biasText: '🔴 SELL BIAS (ห้ามสวนเทรนด์หลัก)',
+                biasColor: 'text-rose-400',
+                isSideway: false,
+                reason: 'ภาพใหญ่ 4 ชั่วโมงคุมทิศทางขาลงอย่างสมบูรณ์ การย่อตัวขึ้นเป็นเพียงการพักฐานเพื่อลงต่อ โซนดัก Sell รอบใหญ่อยู่ที่ Fib 61.8% ($4,126.80) และวาง SL ที่ 78.6% ($4,163.39)'
             },
             'daily': {
                 label: 'รายวัน (Daily)',
                 tvInterval: 'D',
-                structure: 'ปรับฐานใหญ่ (Major Correction)',
-                structureStyle: 'bg-amber-500/20 text-amber-300 border border-amber-500/40',
-                action: '⚠️ เทรดตามน้ำขาลง / รอฐานรับใหญ่',
-                winrate: '88.0% (Position Trade)',
-                swing: 'High $4,240.00 / Low $3,992.20',
-                fib618: '$4,145.30',
-                fib786: '$4,187.00',
-                ob: '$4,150.00 - $4,195.00 (Daily Institutional Zone)',
-                sl: '$4,245.00',
-                tp: '$3,950.00 / $3,880.00',
-                reason: 'ไทม์เฟรม Daily เกิดแรงเทขายทำกำไรรอบใหญ่หลังจากขึ้นไปทำจุดสูงสุดแถว $4,240 โครงสร้างรายวันกำลังปรับฐานลงหาแนวรับจิตวิทยาด้านล่าง ดังนั้นแผนหลักคือเน้นดักจังหวะเด้ง Sell ในไทม์เฟรมย่อย (15M / 1H) ตามทิศทางแท่ง Day'
+                direction: 'SELL',
+                calcDir: 'SELL',
+                swingHigh: 4240.00,
+                swingLow: 3992.20,
+                structure: 'ปรับฐานรายวัน (Daily Correction)',
+                structureClass: 'bg-amber-500/20 text-amber-300 border border-amber-500/40',
+                volatility: 'ผันผวนระดับมหภาค (Position)',
+                biasText: '🔴 SELL BIAS (มองลงตามแท่ง Day)',
+                biasColor: 'text-amber-400',
+                isSideway: false,
+                reason: 'แท่งเทียน Daily ทิ้งตัวลงมาแรงหลังจบรอบขาขึ้นด้านบน ทำให้ภาพรวมรายวันเน้นเล่นหน้า Sell เป็นหลัก โดยใช้ไทม์เฟรม 15M และ 1H ในการหาจังหวะเข้าที่ 61.8%'
             }
         };
 
-        let currentTvInterval = null;
+        let currentInterval = null;
+        let currentTfKey = '1h';
 
-        function renderTradingViewChart(intervalCode) {
-            if (currentTvInterval === intervalCode) return;
-            currentTvInterval = intervalCode;
-            
+        function loadTradingViewWidget(intervalCode) {
+            if (currentInterval === intervalCode) return;
+            currentInterval = intervalCode;
             const container = document.getElementById('tradingview_chart');
             container.innerHTML = '';
 
@@ -376,7 +499,7 @@ HTML_TEMPLATE = """
                 "theme": "dark",
                 "style": "1",
                 "locale": "th",
-                "toolbar_bg": "#090d16",
+                "toolbar_bg": "#05080f",
                 "enable_publishing": false,
                 "hide_side_toolbar": false,
                 "allow_symbol_change": true,
@@ -387,73 +510,194 @@ HTML_TEMPLATE = """
             });
         }
 
-        function selectTimeframe(tfKey) {
-            const data = timeframeDatabase[tfKey];
-            if (!data) return;
+        function updateSetupUI(calcDir, high, low, cfg) {
+            const res = calculateSniperLevels(calcDir, high, low);
 
-            // อัปเดตสไตล์ปุ่มกด
+            // อัปเดตตัวเลขในการ์ดหลัก
+            document.getElementById('val-entry').innerText = '$' + res.entry;
+            document.getElementById('val-sl').innerText = '$' + res.sl;
+            document.getElementById('val-tp1').innerText = '$' + res.tp1;
+            document.getElementById('val-tp2').innerText = '$' + res.tp2;
+
+            // อัปเดตแถบด้านบนกราฟ
+            document.getElementById('bar-entry').innerText = '$' + res.entry;
+            document.getElementById('bar-sl').innerText = '$' + res.sl;
+            document.getElementById('bar-tp1').innerText = '$' + res.tp1;
+            document.getElementById('bar-tp2').innerText = '$' + res.tp2;
+
+            // อัปเดตระยะความเสี่ยงและกำไร ($)
+            document.getElementById('val-risk-pts').innerText = `Risk: -$${res.riskDollar}`;
+            document.getElementById('val-tp1-pts').innerText = `+$${res.reward1Dollar} (1:2)`;
+            document.getElementById('val-tp2-pts').innerText = `+$${res.reward2Dollar} (1:3)`;
+
+            document.getElementById('setup-swing-range').innerText = `High $${high.toFixed(2)} ➔ Low $${low.toFixed(2)}`;
+
+            // ป้ายบอกทิศทางออเดอร์
+            const dirBadge = document.getElementById('setup-direction-badge');
+            if (cfg && cfg.isSideway) {
+                dirBadge.innerText = '⏸️ WAIT / NO TRADE (ไซด์เวย์)';
+                dirBadge.className = 'px-3 py-1.5 rounded-xl text-xs font-black bg-yellow-500 text-slate-950';
+            } else if (calcDir === 'SELL') {
+                dirBadge.innerText = '🔻 SELL LIMIT @ 61.8%';
+                dirBadge.className = 'px-3 py-1.5 rounded-xl text-xs font-black bg-rose-500 text-white shadow-lg shadow-rose-500/30';
+            } else {
+                dirBadge.innerText = '🟢 BUY LIMIT @ 61.8%';
+                dirBadge.className = 'px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30';
+            }
+
+            // สร้างแผนผังลำดับเส้นราคา (Visual Price Ladder)
+            const ladder = document.getElementById('price-ladder-visual');
+            if (calcDir === 'SELL') {
+                ladder.innerHTML = `
+                    <div class="flex justify-between items-center p-2 rounded bg-rose-500/15 border-l-4 border-rose-500 text-rose-300">
+                        <span>🛑 <strong>STOP LOSS (Fib 78.6%)</strong></span>
+                        <span class="font-bold">$${res.sl}</span>
+                    </div>
+                    <div class="flex justify-between items-center p-2 rounded bg-cyan-500/15 border-l-4 border-cyan-400 text-cyan-300">
+                        <span>🎯 <strong>ENTRY SELL (Fib 61.8%)</strong></span>
+                        <span class="font-bold">$${res.entry}</span>
+                    </div>
+                    <div class="flex justify-between items-center p-2 rounded bg-emerald-500/15 border-l-4 border-emerald-400 text-emerald-300">
+                        <span>💰 <strong>TAKE PROFIT 1 (RR 1:2)</strong></span>
+                        <span class="font-bold">$${res.tp1}</span>
+                    </div>
+                    <div class="flex justify-between items-center p-2 rounded bg-amber-500/15 border-l-4 border-amber-400 text-amber-300">
+                        <span>🚀 <strong>TAKE PROFIT 2 (RR 1:3)</strong></span>
+                        <span class="font-bold">$${res.tp2}</span>
+                    </div>
+                `;
+            } else {
+                ladder.innerHTML = `
+                    <div class="flex justify-between items-center p-2 rounded bg-amber-500/15 border-l-4 border-amber-400 text-amber-300">
+                        <span>🚀 <strong>TAKE PROFIT 2 (RR 1:3)</strong></span>
+                        <span class="font-bold">$${res.tp2}</span>
+                    </div>
+                    <div class="flex justify-between items-center p-2 rounded bg-emerald-500/15 border-l-4 border-emerald-400 text-emerald-300">
+                        <span>💰 <strong>TAKE PROFIT 1 (RR 1:2)</strong></span>
+                        <span class="font-bold">$${res.tp1}</span>
+                    </div>
+                    <div class="flex justify-between items-center p-2 rounded bg-cyan-500/15 border-l-4 border-cyan-400 text-cyan-300">
+                        <span>🎯 <strong>ENTRY BUY (Fib 61.8%)</strong></span>
+                        <span class="font-bold">$${res.entry}</span>
+                    </div>
+                    <div class="flex justify-between items-center p-2 rounded bg-rose-500/15 border-l-4 border-rose-500 text-rose-300">
+                        <span>🛑 <strong>STOP LOSS (Fib 78.6%)</strong></span>
+                        <span class="font-bold">$${res.sl}</span>
+                    </div>
+                `;
+            }
+        }
+
+        function selectTimeframe(tfKey) {
+            currentTfKey = tfKey;
+            const cfg = timeframeConfigs[tfKey];
+            if (!cfg) return;
+
+            // อัปเดตสไตล์ปุ่ม
             document.querySelectorAll('.tf-btn').forEach(btn => {
-                btn.className = "tf-btn py-2.5 px-3 rounded-xl text-xs font-bold bg-slate-950 text-slate-400 border border-slate-800 hover:border-amber-500/50 hover:text-slate-200 transition-all duration-150";
+                btn.className = "tf-btn py-2.5 px-3 rounded-xl text-xs font-bold bg-slate-950 text-slate-400 border border-slate-800 hover:border-amber-500/50 hover:text-slate-200 transition";
             });
             const activeBtn = document.getElementById('btn-' + tfKey);
             if (activeBtn) {
-                activeBtn.className = "tf-btn py-2.5 px-3 rounded-xl text-xs font-extrabold bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 border border-amber-400 shadow-lg shadow-amber-500/20 transition-all duration-150";
+                activeBtn.className = "tf-btn py-2.5 px-3 rounded-xl text-xs font-extrabold bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 border border-amber-300 shadow-lg shadow-amber-500/20 transition";
             }
 
-            // อัปเดตข้อมูลในแผงควบคุมด้านขวา
             document.getElementById('active-tf-badge').innerText = 'TF: ' + tfKey.toUpperCase();
             
-            const structEl = document.getElementById('detail-structure');
-            structEl.innerText = data.structure;
-            structEl.className = 'px-2.5 py-1 rounded-md text-xs font-bold ' + data.structureStyle;
+            const structBadge = document.getElementById('tf-structure-badge');
+            structBadge.innerText = cfg.structure;
+            structBadge.className = 'px-2.5 py-1 rounded-md font-bold ' + cfg.structureClass;
 
-            document.getElementById('detail-action').innerText = data.action;
-            document.getElementById('detail-winrate').innerText = data.winrate;
-            document.getElementById('detail-swing').innerText = data.swing;
-            document.getElementById('detail-fib618').innerText = data.fib618;
-            document.getElementById('detail-fib786').innerText = data.fib786;
-            document.getElementById('detail-ob').innerText = data.ob;
-            document.getElementById('detail-sl').innerText = data.sl;
-            document.getElementById('detail-tp').innerText = data.tp;
-            document.getElementById('detail-reason').innerText = data.reason;
+            document.getElementById('tf-volatility').innerText = cfg.volatility;
+            
+            const biasEl = document.getElementById('tf-bias-text');
+            biasEl.innerText = cfg.biasText;
+            biasEl.className = 'font-extrabold text-xs ' + cfg.biasColor;
 
-            // ซิงค์กราฟ TradingView ให้เปลี่ยนไทม์เฟรมตามปุ่มที่กด
-            renderTradingViewChart(data.tvInterval);
+            // แสดง/ซ่อน กล่องเตือน Sideway
+            const warnBox = document.getElementById('sideway-warning');
+            if (cfg.isSideway) {
+                warnBox.classList.remove('hidden');
+            } else {
+                warnBox.classList.add('hidden');
+            }
 
-            // ไฮไลต์แถวในตาราง Matrix
-            renderMatrixTable(tfKey);
+            document.getElementById('setup-reason').innerText = cfg.reason;
+
+            // อัปเดตค่าในช่องเครื่องคิดเลขให้ตรงกับ Timeframe
+            document.getElementById('calc-trend').value = cfg.calcDir;
+            document.getElementById('calc-high').value = cfg.swingHigh;
+            document.getElementById('calc-low').value = cfg.swingLow;
+
+            // คำนวณและแสดงผล Entry 61.8%, SL 78.6%, TP 1:2, TP 1:3
+            updateSetupUI(cfg.calcDir, cfg.swingHigh, cfg.swingLow, cfg);
+
+            // ซิงค์กราฟ TradingView
+            loadTradingViewWidget(cfg.tvInterval);
+
+            // อัปเดตตาราง Matrix ด้านล่าง
+            renderMatrixOverview(tfKey);
         }
 
-        function renderMatrixTable(activeKey) {
-            const matrixContainer = document.getElementById('matrix-table');
-            matrixContainer.innerHTML = '';
+        function runCustomCalc() {
+            // คำนวณสดเมื่อผู้ใช้ปรับเลข High/Low
+        }
 
-            Object.keys(timeframeDatabase).forEach(key => {
-                const item = timeframeDatabase[key];
+        function applyCustomToMainCard() {
+            const dir = document.getElementById('calc-trend').value;
+            const high = parseFloat(document.getElementById('calc-high').value) || 4100;
+            const low = parseFloat(document.getElementById('calc-low').value) || 3990;
+            if (high <= low) {
+                alert('กรุณาใส่ค่า Swing High ให้มากกว่า Swing Low ครับ');
+                return;
+            }
+            updateSetupUI(dir, high, low, { isSideway: false });
+            document.getElementById('setup-reason').innerText = `คำนวณจากสวิงที่คุณกำหนดเอง (${dir}): เข้าที่ 61.8% ตัดขาดทุนที่ 78.6% และล็อกเป้าทำกำไร RR 1:2 และ 1:3 เรียบร้อยแล้ว`;
+        }
+
+        function renderMatrixOverview(activeKey) {
+            const list = document.getElementById('matrix-overview-list');
+            list.innerHTML = '';
+
+            Object.keys(timeframeConfigs).forEach(key => {
+                const item = timeframeConfigs[key];
+                const lvls = calculateSniperLevels(item.calcDir, item.swingHigh, item.swingLow);
                 const isSelected = key === activeKey;
-                const rowClass = isSelected 
-                    ? 'bg-amber-500/15 border-amber-500/60' 
-                    : 'bg-slate-950 border-slate-800/80 hover:border-slate-700';
 
                 const row = document.createElement('div');
-                row.className = `flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition ${rowClass}`;
+                row.className = `flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl border cursor-pointer transition gap-2 ${
+                    isSelected ? 'bg-amber-500/15 border-amber-500/60' : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                }`;
                 row.onclick = () => selectTimeframe(key);
                 row.innerHTML = `
-                    <div class="flex items-center gap-2">
-                        <span class="font-extrabold text-amber-400 w-10 uppercase">${key}</span>
-                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${item.structureStyle}">${item.structure}</span>
+                    <div class="flex items-center gap-2.5">
+                        <span class="font-black text-amber-400 w-10 uppercase">${key}</span>
+                        <span class="px-2 py-0.5 rounded text-[11px] font-bold ${item.structureClass}">${item.structure}</span>
                     </div>
-                    <div class="text-right">
-                        <span class="text-[11px] text-slate-400 block">Golden Zone (61.8% - 78.6%)</span>
-                        <span class="font-bold text-cyan-400">${item.fib618} - ${item.fib786}</span>
+                    <div class="flex items-center gap-3 text-[11px]">
+                        <span class="text-cyan-400 font-bold">เข้า 61.8%: $${lvls.entry}</span>
+                        <span class="text-rose-400 font-bold">SL 78.6%: $${lvls.sl}</span>
+                        <span class="text-amber-400 font-bold">TP(1:3): $${lvls.tp2}</span>
                     </div>
                 `;
-                matrixContainer.appendChild(row);
+                list.appendChild(row);
             });
         }
 
-        // เริ่มต้นเปิดหน้าเว็บที่ไทม์เฟรม 1 ชั่วโมง (1h)
+        function copyPrice(elementId) {
+            const text = document.getElementById(elementId).innerText.replace('$', '');
+            navigator.clipboard.writeText(text);
+            const toast = document.getElementById('toast-copy');
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 2200);
+        }
+
+        // แสดงวันที่ปัจจุบันและโหลดไทม์เฟรมเริ่มต้น 1H
         window.addEventListener('DOMContentLoaded', () => {
+            const now = new Date();
+            document.getElementById('current-date-display').innerText = 'อัปเดตล่าสุด: ' + now.toLocaleDateString('th-TH', {
+                year: 'numeric', month: 'short', day: 'numeric'
+            });
             selectTimeframe('1h');
         });
     </script>

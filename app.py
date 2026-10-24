@@ -9,34 +9,58 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gold AI Analytics Pro - XAUUSD</title>
+    <title>Gold AI Analytics Pro - TradingView Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen p-4 md:p-8">
-    <div class="max-w-6xl mx-auto space-y-6">
+    <div class="max-w-7xl mx-auto space-y-6">
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-800 pb-4 gap-4">
             <div>
                 <h1 class="text-2xl md:text-3xl font-black tracking-wider text-amber-400">GOLD AI ANALYTICS PRO</h1>
-                <p class="text-xs md:text-sm text-slate-400">ระบบวิเคราะห์ราคาทองคำ XAUUSD + Fibonacci Retracement อัจฉริยะ</p>
+                <p class="text-xs md:text-sm text-slate-400">ระบบวิเคราะห์ราคาทองคำ XAUUSD + TradingView Interactive Chart</p>
             </div>
             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-950 text-emerald-400 border border-emerald-800">
                 <span class="w-2 h-2 mr-2 bg-emerald-500 rounded-full animate-pulse"></span> ระบบออนไลน์ (Live)
             </span>
         </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2 space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <!-- ฝั่งซ้าย: กราฟ TradingView ของจริง (กินพื้นที่ 3 ส่วน) -->
+            <div class="lg:col-span-3 space-y-6">
                 <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
                     <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-lg font-bold text-slate-200">กราฟราคา XAUUSD</h2>
-                        <span id="current-price" class="text-xl font-bold text-amber-400">$2,684.50</span>
+                        <h2 class="text-lg font-bold text-slate-200">กราฟมาตรฐาน TradingView (XAUUSD)</h2>
+                        <span class="text-xs text-slate-400">เครื่องมือครบครัน / เปลี่ยนไทม์เฟรมได้</span>
                     </div>
-                    <!-- พื้นที่แสดงกราฟ -->
-                    <div id="chart-container" style="width: 100%; height: 400px;"></div>
+                    
+                    <!-- TradingView Widget BEGIN -->
+                    <div class="tradingview-widget-container" style="height:550px;width:100%;">
+                        <div id="tradingview_chart" style="height:100%;width:100%;"></div>
+                        <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+                        <script type="text/javascript">
+                        new TradingView.widget(
+                        {
+                            "width": "100%",
+                            "height": "550",
+                            "symbol": "OANDA:XAUUSD",
+                            "interval": "D",
+                            "timezone": "Asia/Bangkok",
+                            "theme": "dark",
+                            "style": "1",
+                            "locale": "th",
+                            "toolbar_bg": "#f1f3f6",
+                            "enable_publishing": false,
+                            "allow_symbol_change": true,
+                            "container_id": "tradingview_chart"
+                        }
+                        );
+                        </script>
+                    </div>
+                    <!-- TradingView Widget END -->
                 </div>
             </div>
 
+            <!-- ฝั่งขวา: แผงควบคุม AI และ Fibonacci ของเราเอง (กินพื้นที่ 1 ส่วน) -->
             <div class="space-y-6">
                 <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
                     <h2 class="text-lg font-bold text-slate-200 border-b border-slate-800 pb-2">สัญญาณ AI & Fibonacci</h2>
@@ -61,60 +85,13 @@ HTML_TEMPLATE = """
                     <div class="space-y-1 pt-2">
                         <span class="text-xs text-slate-400 block">วิเคราะห์เชิงลึก:</span>
                         <p class="text-xs text-slate-300 bg-slate-950 p-3 rounded-xl border border-slate-800 leading-relaxed">
-                            ราคาพักตัวลงมาแตะโซน Fibonacci Retracement 61.8% (Golden Pocket) พร้อมสัญญาณ Bullish Order Block สนับสนุนทิศทางขาขึ้น
+                            กราฟราคาหลักวิ่งตามตลาดจริงผ่าน TradingView พร้อมระบบคำนวณ Fibonacci Retracement ระดับ Golden Pocket สนับสนุนทิศทางขาขึ้น
                         </p>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <script>
-        window.addEventListener('load', () => {
-            const container = document.getElementById('chart-container');
-            
-            // สร้างกราฟโดยใช้ขนาดจริงของ container
-            const chart = LightweightCharts.createChart(container, {
-                width: container.clientWidth || 600,
-                height: 400,
-                layout: { 
-                    background: { type: 'solid', color: '#090d16' }, 
-                    textColor: '#94a3b8' 
-                },
-                grid: { 
-                    vertLines: { color: '#1e293b' }, 
-                    horzLines: { color: '#1e293b' } 
-                },
-                rightPriceScale: { borderColor: '#334155' },
-                timeScale: { borderColor: '#334155' }
-            });
-
-            const candleSeries = chart.addCandlestickSeries({
-                upColor: '#10b981', 
-                downColor: '#f43f5e', 
-                borderVisible: false, 
-                wickUpColor: '#10b981', 
-                wickDownColor: '#f43f5e'
-            });
-
-            // ใช้ timestamp ตัวเลขเพื่อให้กราฟเรนเดอร์ได้แน่นอน 100%
-            const mockData = [
-                { time: 1729382400, open: 2650.0, high: 2662.0, low: 2648.0, close: 2658.5 },
-                { time: 1729385400, open: 2658.5, high: 2670.0, low: 2655.0, close: 2668.2 },
-                { time: 1729388400, open: 2668.2, high: 2675.0, low: 2662.0, close: 2664.0 },
-                { time: 1729391400, open: 2664.0, high: 2680.0, low: 2661.0, close: 2677.5 },
-                { time: 1729394400, open: 2677.5, high: 2685.0, low: 2672.0, close: 2684.5 }
-            ];
-
-            candleSeries.setData(mockData);
-            chart.timeScale().fitContent();
-
-            // ปรับขนาดตามหน้าจออัตโนมัติ
-            window.addEventListener('resize', () => {
-                chart.applyOptions({ width: container.clientWidth });
-            });
-        });
-    </script>
 </body>
 </html>
 """

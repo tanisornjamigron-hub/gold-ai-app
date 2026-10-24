@@ -32,8 +32,8 @@ HTML_TEMPLATE = """
                         <h2 class="text-lg font-bold text-slate-200">กราฟราคา XAUUSD</h2>
                         <span id="current-price" class="text-xl font-bold text-amber-400">$2,684.50</span>
                     </div>
-                    <!-- กำหนดความสูงและขนาดกล่องกราฟให้ชัดเจน -->
-                    <div id="chart-container" style="width: 100%; height: 400px; position: relative;"></div>
+                    <!-- พื้นที่แสดงกราฟ -->
+                    <div id="chart-container" style="width: 100%; height: 400px;"></div>
                 </div>
             </div>
 
@@ -70,15 +70,23 @@ HTML_TEMPLATE = """
     </div>
 
     <script>
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('load', () => {
             const container = document.getElementById('chart-container');
+            
+            // สร้างกราฟโดยใช้ขนาดจริงของ container
             const chart = LightweightCharts.createChart(container, {
-                width: container.clientWidth,
+                width: container.clientWidth || 600,
                 height: 400,
-                layout: { background: { type: 'solid', color: '#090d16' }, textColor: '#94a3b8' },
-                grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
+                layout: { 
+                    background: { type: 'solid', color: '#090d16' }, 
+                    textColor: '#94a3b8' 
+                },
+                grid: { 
+                    vertLines: { color: '#1e293b' }, 
+                    horzLines: { color: '#1e293b' } 
+                },
                 rightPriceScale: { borderColor: '#334155' },
-                timeScale: { borderColor: '#334155', timeVisible: true }
+                timeScale: { borderColor: '#334155' }
             });
 
             const candleSeries = chart.addCandlestickSeries({
@@ -89,19 +97,19 @@ HTML_TEMPLATE = """
                 wickDownColor: '#f43f5e'
             });
 
-            // ข้อมูลจำลองแท่งเทียน XAUUSD
+            // ใช้ timestamp ตัวเลขเพื่อให้กราฟเรนเดอร์ได้แน่นอน 100%
             const mockData = [
-                { time: '2026-10-20', open: 2650.0, high: 2662.0, low: 2648.0, close: 2658.5 },
-                { time: '2026-10-21', open: 2658.5, high: 2670.0, low: 2655.0, close: 2668.2 },
-                { time: '2026-10-22', open: 2668.2, high: 2675.0, low: 2662.0, close: 2664.0 },
-                { time: '2026-10-23', open: 2664.0, high: 2680.0, low: 2661.0, close: 2677.5 },
-                { time: '2026-10-24', open: 2677.5, high: 2685.0, low: 2672.0, close: 2684.5 }
+                { time: 1729382400, open: 2650.0, high: 2662.0, low: 2648.0, close: 2658.5 },
+                { time: 1729385400, open: 2658.5, high: 2670.0, low: 2655.0, close: 2668.2 },
+                { time: 1729388400, open: 2668.2, high: 2675.0, low: 2662.0, close: 2664.0 },
+                { time: 1729391400, open: 2664.0, high: 2680.0, low: 2661.0, close: 2677.5 },
+                { time: 1729394400, open: 2677.5, high: 2685.0, low: 2672.0, close: 2684.5 }
             ];
 
             candleSeries.setData(mockData);
             chart.timeScale().fitContent();
 
-            // ปรับขนาดกราฟอัตโนมัติเมื่อจอเปลี่ยนขนาด
+            // ปรับขนาดตามหน้าจออัตโนมัติ
             window.addEventListener('resize', () => {
                 chart.applyOptions({ width: container.clientWidth });
             });

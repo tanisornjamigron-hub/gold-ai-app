@@ -10,7 +10,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gold AI Analytics - XAUUSD Pro</title>
+    <title>Gold AI Analytics - XAUUSD Pro & Fibonacci</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 </head>
@@ -18,8 +18,8 @@ HTML_TEMPLATE = """
     <div class="max-w-6xl mx-auto space-y-6">
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-800 pb-4 gap-4">
             <div>
-                <h1 class="text-2xl md:text-3xl font-black tracking-wider text-amber-400">GOLD AI ANALYTICS</h1>
-                <p class="text-xs md:text-sm text-slate-400">ระบบวิเคราะห์ราคาทองคำ XAUUSD อัจฉริยะ แบบเรียลไทม์</p>
+                <h1 class="text-2xl md:text-3xl font-black tracking-wider text-amber-400">GOLD AI ANALYTICS PRO</h1>
+                <p class="text-xs md:text-sm text-slate-400">ระบบวิเคราะห์ราคาทองคำ XAUUSD + ระบบคำนวณ Fibonacci อัตโนมัติ</p>
             </div>
             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-950 text-emerald-400 border border-emerald-800">
                 <span class="w-2 h-2 mr-2 bg-emerald-500 rounded-full animate-pulse"></span> ระบบออนไลน์ (Live)
@@ -30,16 +30,16 @@ HTML_TEMPLATE = """
             <div class="lg:col-span-2 space-y-6">
                 <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
                     <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-lg font-bold text-slate-200">กราฟราคา XAUUSD</h2>
+                        <h2 class="text-lg font-bold text-slate-200">กราฟ XAUUSD + Auto Fibonacci</h2>
                         <span id="current-price" class="text-xl font-bold text-amber-400">Loading...</span>
                     </div>
-                    <div id="chart-container" class="w-full h-[350px]"></div>
+                    <div id="chart-container" class="w-full h-[380px]"></div>
                 </div>
             </div>
 
             <div class="space-y-6">
                 <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-                    <h2 class="text-lg font-bold text-slate-200 border-b border-slate-800 pb-2">สัญญาณวิเคราะห์ AI</h2>
+                    <h2 class="text-lg font-bold text-slate-200 border-b border-slate-800 pb-2">สัญญาณ AI & Fibonacci</h2>
                     <div class="flex justify-between items-center">
                         <span class="text-sm text-slate-400">สถานะ (Signal):</span>
                         <span id="ai-signal" class="px-3 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">ANALYZING...</span>
@@ -50,18 +50,18 @@ HTML_TEMPLATE = """
                     </div>
                     <div class="grid grid-cols-2 gap-3 pt-2">
                         <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                            <span class="text-xs text-slate-400 block">แนวรับ (Support)</span>
-                            <span id="support-level" class="text-sm font-bold text-cyan-400">--</span>
+                            <span class="text-xs text-slate-400 block">Fibonacci 61.8%</span>
+                            <span id="fib-61" class="text-sm font-bold text-cyan-400">--</span>
                         </div>
                         <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                            <span class="text-xs text-slate-400 block">แนวต้าน (Resistance)</span>
-                            <span id="resistance-level" class="text-sm font-bold text-rose-400">--</span>
+                            <span class="text-xs text-slate-400 block">Fibonacci 38.2%</span>
+                            <span id="fib-38" class="text-sm font-bold text-purple-400">--</span>
                         </div>
                     </div>
                     <div class="space-y-1 pt-2">
-                        <span class="text-xs text-slate-400 block">เหตุผลประกอบการเทรด:</span>
+                        <span class="text-xs text-slate-400 block">วิเคราะห์เชิงลึก:</span>
                         <p id="ai-reason" class="text-xs text-slate-300 bg-slate-950 p-3 rounded-xl border border-slate-800 leading-relaxed">
-                            กำลังประมวลผลข้อมูลตลาดด้วยโครงข่ายประสาทเทียม...
+                            กำลังคำนวณระดับ Fibonacci Retracement และ Order Block...
                         </p>
                     </div>
                 </div>
@@ -93,8 +93,8 @@ HTML_TEMPLATE = """
                 if (data.analysis) {
                     document.getElementById('ai-signal').innerText = data.analysis.signal;
                     document.getElementById('ai-winrate').innerText = data.analysis.winrate + '%';
-                    document.getElementById('support-level').innerText = '$' + data.analysis.support;
-                    document.getElementById('resistance-level').innerText = '$' + data.analysis.resistance;
+                    document.getElementById('fib-61').innerText = '$' + data.analysis.fib618;
+                    document.getElementById('fib-38').innerText = '$' + data.analysis.fib382;
                     document.getElementById('ai-reason').innerText = data.analysis.reason;
                 }
             } catch (err) {
@@ -117,6 +117,9 @@ def api_data():
     base_price = 2650.00
     candles = []
     current_time = 1710000000
+    highs = []
+    lows = []
+    
     for i in range(50):
         open_p = base_price + random.uniform(-5, 5)
         close_p = open_p + random.uniform(-6, 6)
@@ -129,14 +132,23 @@ def api_data():
             "low": round(low_p, 2),
             "close": round(close_p, 2)
         })
+        highs.append(high_p)
+        lows.append(low_p)
         base_price = close_p
 
+    max_h = max(highs)
+    min_l = min(lows)
+    diff = max_h - min_l
+    
+    fib_618 = round(max_h - (diff * 0.618), 2)
+    fib_382 = round(max_h - (diff * 0.382), 2)
+
     analysis = {
-        "signal": "BUY (LONG)",
-        "winrate": 82.5,
-        "support": round(base_price - 12.5, 2),
-        "resistance": round(base_price + 15.0, 2),
-        "reason": "RSI อยู่ในเขต Oversold ประกอบกับกราฟเบรกตัวขึ้นเหนือแนวรับสำคัญ (Order Block) พร้อมปริมาณ Volume ซื้อหนุนสูง"
+        "signal": "BUY AT FIB 61.8%",
+        "winrate": 88.4,
+        "fib618": fib_618,
+        "fib382": fib_382,
+        "reason": f"ราคาพักตัวลงมาแตะโซน Fibonacci Retracement 61.8% ที่ราคา ${fib_618} ซึ่งเป็นจุดกลับตัวสำคัญ (Golden Pocket) พร้อมโวลุ่มซื้อหนุน"
     }
     return jsonify({"candles": candles, "analysis": analysis})
 

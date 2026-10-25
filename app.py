@@ -14,15 +14,16 @@ LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 # เขตเวลาประเทศไทย (UTC+7)
 TH_TZ = timezone(timedelta(hours=7))
 
-# แคชข้อมูลข่าว Forex Factory
+# แคชข้อมูลข่าว Forex Factory เพื่อความรวดเร็ว
 FF_CACHE = {
     "last_fetched": 0,
     "events": []
 }
 
-# สถานะระบบหลัก
+# สถานะระบบหลัก (เก็บประวัติสัญญาณและตารางข่าว)
 SYSTEM_STATE = {
     "manual_news_lock": False,
+    "lock_reason": "ตลาดปกติ (Normal Market Conditions)",
     "latest_signal": None,
     "signal_history": [
         {
@@ -38,7 +39,7 @@ SYSTEM_STATE = {
             "tp2": "2718.40",
             "rr": "1:3",
             "status": "READY / ACTIVE",
-            "reason": "คำนวณจาก Golden Zone Fib 61.8% ในไทม์เฟรม 1H แนวต้านสำคัญ"
+            "reason": "คำนวณจาก Golden Zone Fib 61.8% บนกราฟ TradingView แท้ แนวต้านสำคัญ"
         },
         {
             "id": 101,
@@ -53,7 +54,7 @@ SYSTEM_STATE = {
             "tp2": "2736.20",
             "rr": "1:3",
             "status": "TP2 HIT (+1,380 pts)",
-            "reason": "ราคาย่อตัวลงมาแตะ Fib 61.8% หลังข่าวประกาศ แล้วดีดกลับตามเทรนด์หลัก"
+            "reason": "ราคาย่อตัวลงมาแตะ Fib 61.8% บนกราฟจริง แล้วดีดกลับตามเทรนด์หลัก"
         }
     ],
     "custom_news": []
@@ -231,7 +232,7 @@ def fetch_forex_factory_calendar():
 
 
 # ==============================================================================
-# FRONTEND HTML TEMPLATE (CLEAN 6-LINE FIBONACCI + GIANT BUY/SELL BANNER)
+# FRONTEND HTML TEMPLATE (TRADINGVIEW REALTIME + PRO UI + FULL FEATURES)
 # ==============================================================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -239,9 +240,8 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GOLD AI SNIPER PRO — Clean Golden Zone 61.8% & 78.6% Terminal</title>
+    <title>GOLD AI SNIPER PRO — TradingView Realtime & Auto Fibonacci Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -282,7 +282,6 @@ HTML_TEMPLATE = """
             box-shadow: 0 22px 55px -15px rgba(245, 158, 11, 0.16), inset 0 1px 0 0 rgba(251, 191, 36, 0.25);
         }
 
-        /* Micro-Interactions สำหรับปุ่มกด */
         .btn-interactive {
             position: relative;
             overflow: hidden;
@@ -312,20 +311,6 @@ HTML_TEMPLATE = """
         .btn-fib-magic:active {
             transform: translateY(1px) scale(0.97);
         }
-        .btn-fib-magic::after {
-            content: "";
-            position: absolute;
-            top: -50%;
-            left: -60%;
-            width: 40%;
-            height: 200%;
-            background: rgba(255, 255, 255, 0.35);
-            transform: rotate(30deg);
-            transition: all 0.65s ease;
-        }
-        .btn-fib-magic:hover::after {
-            left: 130%;
-        }
 
         .price-card-interactive {
             transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -354,7 +339,7 @@ HTML_TEMPLATE = """
     <div class="max-w-[1780px] mx-auto space-y-5">
 
         <!-- ================================================================ -->
-        <!-- 1. TOP INSTITUTIONAL NAVBAR & FOREX FACTORY SHIELD               -->
+        <!-- 1. TOP NAVBAR & FOREX FACTORY SHIELD                             -->
         <!-- ================================================================ -->
         <header class="pro-card rounded-2xl p-4 lg:px-6">
             <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
@@ -363,7 +348,7 @@ HTML_TEMPLATE = """
                     <div class="relative group cursor-pointer">
                         <div class="absolute -inset-1 bg-gradient-to-r from-amber-400 via-yellow-500 to-cyan-500 rounded-2xl blur opacity-45 group-hover:opacity-90 transition duration-300"></div>
                         <div class="relative px-4 py-2.5 rounded-2xl bg-gradient-to-br from-amber-300 via-amber-500 to-yellow-600 flex flex-col items-center justify-center shadow-xl font-black text-slate-950 shrink-0">
-                            <span class="text-[10px] tracking-tighter leading-none opacity-85">SNIPER PRO</span>
+                            <span class="text-[10px] tracking-tighter leading-none opacity-85">TRADINGVIEW</span>
                             <span class="text-lg tracking-tight leading-none font-mono-num">XAU</span>
                         </div>
                     </div>
@@ -373,33 +358,31 @@ HTML_TEMPLATE = """
                                 GOLD AI SNIPER PRO
                             </h1>
                             <span class="px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-full">
-                                <i class="fa-solid fa-crosshairs mr-1"></i>ONLY FIB 61.8% & 78.6% • TP1 (1:2) & TP2 (1:3)
+                                <i class="fa-solid fa-chart-line mr-1"></i>TRADINGVIEW ADVANCED REALTIME • FIB 61.8% & 78.6%
                             </span>
                             <span class="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 rounded-full">
                                 <i class="fa-solid fa-calendar-days mr-1"></i>FOREX FACTORY LIVE SYNC
                             </span>
                         </div>
                         <p class="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2">
-                            <span>ระบบกราฟคู่ตัดเส้นรบกวนออกทั้งหมด แสดงเฉพาะ Swing High/Low, Golden Zone 61.8%, SL 78.6%, TP1 และ TP2 พร้อมป้ายบอก BUY/SELL ชัดเจน</span>
+                            <span>กราฟ TradingView แท้ 100% สตรีมมิ่งสดจากตลาดโลก + ปุ่มคำนวณ Fibonacci อัตโนมัติ & ปฏิทินข่าวระบุวัน-เวลาไทยชัดเจน</span>
                             <span class="hidden md:inline text-slate-600">|</span>
                             <span id="current-date-label" class="text-amber-400 font-semibold"></span>
                         </p>
                     </div>
                 </div>
 
-                <!-- Right Controls: Active Bias + News Shield + Live Price -->
                 <div class="flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-between xl:justify-end">
                     
                     <div id="top-bias-pill" class="bg-slate-950/90 border border-slate-800 px-4 py-2 rounded-xl flex items-center gap-2.5">
                         <div class="text-xs">
                             <span class="block text-[9px] uppercase tracking-wider text-slate-400 font-bold">คำสั่งหน้าเทรดปัจจุบัน (SIGNAL)</span>
                             <span id="master-daily-bias" class="text-sm font-black text-amber-400 flex items-center gap-1">
-                                <i class="fa-solid fa-crosshairs"></i> กำลังคำนวณฝั่งเทรด...
+                                <i class="fa-solid fa-crosshairs"></i> พร้อมคำนวณราคา
                             </span>
                         </div>
                     </div>
 
-                    <!-- News Filter Shield Status -->
                     <div id="news-shield-box" class="bg-emerald-950/40 border border-emerald-500/40 px-3.5 py-2 rounded-xl flex items-center gap-3 transition-all">
                         <div class="flex items-center gap-2">
                             <span id="shield-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
@@ -413,11 +396,10 @@ HTML_TEMPLATE = """
                         </button>
                     </div>
 
-                    <!-- Live XAUUSD Price Ticker -->
                     <div class="bg-slate-950/90 border border-amber-500/40 px-4 py-2 rounded-xl flex items-center gap-3">
                         <div class="text-right">
-                            <span class="block text-[9px] uppercase tracking-wider text-amber-400/80 font-bold">XAUUSD MARKET</span>
-                            <span id="live-ticker-price" class="font-mono-num text-sm md:text-base font-extrabold text-emerald-400">LOADING...</span>
+                            <span class="block text-[9px] uppercase tracking-wider text-amber-400/80 font-bold">XAUUSD SPOT</span>
+                            <span id="live-ticker-price" class="font-mono-num text-sm md:text-base font-extrabold text-emerald-400">REALTIME</span>
                         </div>
                         <span class="px-1.5 py-0.5 text-[10px] font-mono-num font-bold bg-emerald-500/15 text-emerald-400 rounded border border-emerald-500/30">LIVE</span>
                     </div>
@@ -427,39 +409,39 @@ HTML_TEMPLATE = """
         </header>
 
         <!-- ================================================================ -->
-        <!-- 2. KPI METRICS BAR (4 PRO INTERACTIVE CARDS)                     -->
+        <!-- 2. KPI METRICS BAR                                               -->
         <!-- ================================================================ -->
         <section class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div class="pro-card rounded-2xl p-4 flex items-center justify-between">
                 <div>
-                    <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">จุดเข้าเดียวเน้นๆ (Golden Zone)</span>
-                    <div class="text-xl md:text-2xl font-black font-mono-num text-cyan-400 mt-0.5">Fib 61.8%</div>
-                    <span class="text-[11px] text-slate-400">ตัดเส้นย่อยทิ้งทั้งหมด ดูง่ายสบายตา</span>
+                    <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">กราฟหลัก (Realtime Chart)</span>
+                    <div class="text-xl md:text-2xl font-black font-mono-num text-cyan-400 mt-0.5">TradingView แท้</div>
+                    <span class="text-[11px] text-slate-400">สตรีมมิ่งสดจาก OANDA:XAUUSD 100%</span>
                 </div>
                 <div class="w-11 h-11 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-lg">
+                    <i class="fa-solid fa-chart-line"></i>
+                </div>
+            </div>
+
+            <div class="pro-card rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                    <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">จุดเข้าเดียวเน้นๆ (Golden Zone)</span>
+                    <div class="text-xl md:text-2xl font-black font-mono-num text-amber-400 mt-0.5">Fib 61.8%</div>
+                    <span class="text-[11px] text-slate-400">คำนวณราคาเป๊ะอัตโนมัติ ไม่ต้องลากเอง</span>
+                </div>
+                <div class="w-11 h-11 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 text-lg">
                     <i class="fa-solid fa-crosshairs"></i>
                 </div>
             </div>
 
             <div class="pro-card rounded-2xl p-4 flex items-center justify-between">
                 <div>
-                    <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">จุดตัดขาดทุน (Stop Loss)</span>
-                    <div class="text-xl md:text-2xl font-black font-mono-num text-rose-400 mt-0.5">Fib 78.6%</div>
-                    <span class="text-[11px] text-slate-400">SL สั้น คัดทิ้งทันทีหากหลุดโครงสร้าง</span>
-                </div>
-                <div class="w-11 h-11 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 text-lg">
-                    <i class="fa-solid fa-shield-halved"></i>
-                </div>
-            </div>
-
-            <div class="pro-card rounded-2xl p-4 flex items-center justify-between">
-                <div>
-                    <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">เป้าทำกำไร (Take Profit)</span>
-                    <div class="text-xl md:text-2xl font-black font-mono-num text-emerald-400 mt-0.5">TP1 (1:2) & TP2 (1:3)</div>
-                    <span class="text-[11px] text-slate-400">ชนะ 1 ไม้ ครอบคลุมแพ้ได้ 3 ไม้</span>
+                    <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">ความเสี่ยงและเป้าหมาย (RR)</span>
+                    <div class="text-xl md:text-2xl font-black font-mono-num text-emerald-400 mt-0.5">SL 78.6% • TP 1:3</div>
+                    <span class="text-[11px] text-slate-400">คุ้มค่าความเสี่ยงสูงสุด คุม Drawdown</span>
                 </div>
                 <div class="w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-lg">
-                    <i class="fa-solid fa-trophy"></i>
+                    <i class="fa-solid fa-scale-balanced"></i>
                 </div>
             </div>
 
@@ -483,34 +465,22 @@ HTML_TEMPLATE = """
         <div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
             
             <!-- ============================================================ -->
-            <!-- LEFT COLUMN (7 COLS): TRADINGVIEW & AUTO-FIB + FOREX FACTORY -->
+            <!-- LEFT COLUMN (7 COLS): TRADINGVIEW ADVANCED CHART + CALENDAR  -->
             <!-- ============================================================ -->
             <div class="xl:col-span-7 space-y-5">
                 
-                <!-- 3.1 CHART & AUTO-FIBONACCI STUDIO -->
+                <!-- 3.1 TRADINGVIEW ADVANCED CHART (ONLY 1 CLEAN REALTIME CHART) -->
                 <div class="pro-card rounded-2xl p-4 md:p-5 space-y-4">
                     
-                    <!-- Top Action Bar: 3 Chart Modes + Big "Calculate Auto Fibonacci" Button -->
-                    <div class="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3 border-b border-slate-800/80 pb-3.5">
-                        
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 flex-1">
-                            <button onclick="switchChartMode('autofib')" id="mode-btn-autofib" class="btn-interactive py-2.5 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-slate-950 shadow-lg">
-                                <i class="fa-solid fa-crosshairs"></i>
-                                <span>กราฟ AI ตีเส้น 61.8% & 78.6% (ดูง่าย)</span>
-                            </button>
-                            <button onclick="switchChartMode('tv')" id="mode-btn-tv" class="btn-interactive py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-950 text-slate-300 border border-slate-800 hover:border-amber-500/50">
-                                <i class="fa-solid fa-chart-line text-cyan-400"></i>
-                                <span>TradingView แท้เต็มจอ (OANDA)</span>
-                            </button>
-                            <button onclick="switchChartMode('split')" id="mode-btn-split" class="btn-interactive py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-950 text-slate-300 border border-slate-800 hover:border-amber-500/50">
-                                <i class="fa-solid fa-columns text-amber-400"></i>
-                                <span>ดูคู่กัน 2 กราฟ (Split View)</span>
-                            </button>
+                    <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 border-b border-slate-800/80 pb-3.5">
+                        <div class="flex items-center gap-2">
+                            <span class="px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-400 text-xs font-black">
+                                <i class="fa-solid fa-chart-candlestick mr-1"></i> TradingView Advanced Chart (OANDA:XAUUSD Realtime)
+                            </span>
                         </div>
-
-                        <button onclick="triggerAutoFibonacciCalculation(true)" id="btn-calc-fib-main" class="btn-fib-magic py-2.5 px-5 rounded-xl text-xs md:text-sm font-black text-slate-950 flex items-center justify-center gap-2 shrink-0">
+                        <button onclick="triggerAutoFibonacciCalculation(true)" id="btn-calc-fib-main" class="btn-fib-magic py-2 px-4 rounded-xl text-xs font-black text-slate-950 flex items-center justify-center gap-2 shrink-0">
                             <i id="fib-spin-icon" class="fa-solid fa-bolt"></i>
-                            <span>คำนวณจุดเข้า 61.8% อัตโนมัติ</span>
+                            <span>คำนวณราคา Fibonacci ทันที</span>
                         </button>
                     </div>
 
@@ -536,7 +506,7 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- Quick Copy Price Pills Above Chart -->
+                    <!-- Quick Copy Price Pills -->
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                         <div onclick="copyPrice('val-entry')" class="price-card-interactive cursor-pointer p-2.5 rounded-xl bg-cyan-950/35 border border-cyan-500/40 flex justify-between items-center">
                             <div>
@@ -571,35 +541,10 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- CHART CONTAINER 1: AI AUTO-PLOT CLEAN FIBONACCI CHART (DEFAULT VISIBLE) -->
-                    <div id="autofib-chart-section" class="space-y-2">
-                        <div class="flex flex-wrap justify-between items-center text-[11px] bg-slate-950/80 px-3 py-2 rounded-xl border border-amber-500/30">
-                            <span class="text-slate-200">
-                                <i class="fa-solid fa-wand-magic-sparkles text-amber-400 mr-1"></i><strong>กราฟตีเส้นอัตโนมัติ (Clean Mode):</strong> โชว์เฉพาะ <strong>Swing High, Swing Low, จุดเข้า 61.8%, SL 78.6%, TP1 และ TP2</strong> (ย้อนหลัง 1,000 แท่ง)
-                            </span>
-                            <div class="flex items-center gap-2">
-                                <span id="autofib-status-text" class="text-emerald-400 font-semibold">● ตีเส้นพร้อมเทรด</span>
-                                <button onclick="resetSniperZoom()" class="btn-interactive px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-amber-400 font-bold">
-                                    <i class="fa-solid fa-expand mr-1"></i>จัดกึ่งกลางกราฟ
-                                </button>
-                            </div>
-                        </div>
-                        <div id="sniper-lw-chart" class="w-full h-[500px] rounded-xl overflow-hidden border border-slate-800 bg-[#050912]"></div>
+                    <!-- TRADINGVIEW ADVANCED CHART WIDGET (CLEAN FULL SIZE) -->
+                    <div class="tradingview-widget-container rounded-xl overflow-hidden border border-slate-800/90" style="height:540px; width:100%;">
+                        <div id="tradingview_advanced_chart" style="height:100%; width:100%;"></div>
                     </div>
-
-                    <!-- CHART CONTAINER 2: TRADINGVIEW OFFICIAL ADVANCED CHART -->
-                    <div id="tv-chart-section" class="hidden space-y-2">
-                        <div class="flex flex-wrap justify-between items-center text-[11px] bg-slate-950/80 px-3 py-2 rounded-xl border border-slate-800">
-                            <span class="text-amber-300 font-semibold">
-                                <i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i><strong>กราฟ TradingView แท้ (OANDA:XAUUSD)</strong> — กราฟสะอาดไม่มีเส้นรก พร้อมแถบเครื่องมือด้านซ้ายมือ
-                            </span>
-                            <span id="tv-tf-label" class="font-mono-num font-bold text-cyan-400">TF: 1H</span>
-                        </div>
-                        <div class="tradingview-widget-container rounded-xl overflow-hidden border border-slate-800" style="height:500px; width:100%;">
-                            <div id="tradingview_studio_chart" style="height:100%; width:100%;"></div>
-                        </div>
-                    </div>
-
                 </div>
 
                 <!-- 3.2 FOREX FACTORY ECONOMIC CALENDAR -->
@@ -667,7 +612,7 @@ HTML_TEMPLATE = """
             </div>
 
             <!-- ============================================================ -->
-            <!-- RIGHT COLUMN (5 COLS): MTF + CLEAN 6-LINE SETUP + LINE OA    -->
+            <!-- RIGHT COLUMN (5 COLS): MTF + CLEAN SETUP + LINE OA           -->
             <!-- ============================================================ -->
             <div class="xl:col-span-5 space-y-5">
                 
@@ -708,29 +653,26 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
 
-                <!-- 2. GOLDEN ZONE SNIPER SETUP (ONLY 61.8% & 78.6% + SWING HIGH/LOW + TP1/TP2) -->
+                <!-- 2. GOLDEN ZONE SNIPER SETUP (ONLY 61.8% & 78.6% + SWING HIGH/LOW) -->
                 <div class="pro-card-gold rounded-2xl p-5 space-y-4">
                     
-                    <!-- GIANT DIRECTION BADGE IN CARD -->
                     <div id="right-card-direction-banner" class="p-4 rounded-xl border-2 text-center space-y-1 transition-all">
                         <div class="text-[11px] font-extrabold uppercase tracking-widest opacity-90">คำสั่งแผนเทรดหลัก (SNIPER ORDER)</div>
                         <div id="setup-order-badge" class="text-2xl md:text-3xl font-black tracking-tight font-mono-num">--</div>
                         <div id="setup-order-subtext" class="text-xs font-semibold opacity-95">--</div>
                     </div>
 
-                    <!-- Swing High & Swing Low Box (ชัดเจน คู่กัน) -->
                     <div class="grid grid-cols-2 gap-2.5 bg-slate-950/95 p-3.5 rounded-xl border border-slate-800 text-xs">
                         <div class="border-r border-slate-800 pr-2">
-                            <span class="text-[10px] text-slate-400 font-bold uppercase block">⬆️ SWING HIGH (กรอบสวิงบน)</span>
+                            <span class="text-[10px] text-slate-400 font-bold uppercase block">⬆️ SWING HIGH (สวิงบน)</span>
                             <span id="display-swing-high" class="font-mono-num text-base font-black text-slate-100 mt-0.5 block">--</span>
                         </div>
                         <div class="pl-2">
-                            <span class="text-[10px] text-slate-400 font-bold uppercase block">⬇️ SWING LOW (กรอบสวิงล่าง)</span>
+                            <span class="text-[10px] text-slate-400 font-bold uppercase block">⬇️ SWING LOW (สวิงล่าง)</span>
                             <span id="display-swing-low" class="font-mono-num text-base font-black text-slate-100 mt-0.5 block">--</span>
                         </div>
                     </div>
 
-                    <!-- 4 Main Action Cards: ENTRY 61.8%, SL 78.6%, TP1, TP2 -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div onclick="copyPrice('val-entry')" class="price-card-interactive cursor-pointer bg-gradient-to-br from-cyan-950/70 via-slate-950 to-slate-950 p-4 rounded-xl border-2 border-cyan-500/60">
                             <div class="flex justify-between items-center">
@@ -769,7 +711,7 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- AUTO LOT SIZE & RISK CALCULATOR -->
+                    <!-- AUTO LOT SIZE CALCULATOR -->
                     <div class="bg-slate-950/90 p-3.5 rounded-xl border border-slate-800 space-y-2.5 text-xs">
                         <div class="flex justify-between items-center">
                             <span class="font-bold text-cyan-400"><i class="fa-solid fa-calculator mr-1.5"></i>คำนวณขนาด Lot อัตโนมัติ (ตามระยะ SL 78.6%)</span>
@@ -787,7 +729,6 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- AI Reasoning Box -->
                     <div class="space-y-1">
                         <span class="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                             <i class="fa-solid fa-microchip"></i> สรุปแผนการเทรดจาก AI (ส่งแนบไปกับ LINE OA):
@@ -806,12 +747,12 @@ HTML_TEMPLATE = """
                     </button>
                 </div>
 
-                <!-- 3. CUSTOM SWING TUNER (MANUAL OVERRIDE) -->
+                <!-- 3. CUSTOM SWING TUNER -->
                 <div class="pro-card rounded-2xl p-5 space-y-3">
                     <div class="flex justify-between items-center border-b border-slate-800/80 pb-2.5">
                         <div>
                             <h3 class="text-sm font-bold text-amber-400"><i class="fa-solid fa-sliders mr-1.5"></i>ปรับฝั่ง BUY / SELL หรือแก้จุด Swing High / Low เอง</h3>
-                            <p class="text-[11px] text-slate-400">เลือกเปลี่ยนฝั่ง BUY/SELL หรือใส่ตัวเลข High/Low เอง แล้วกดปุ่มเพื่อตีเส้น 61.8% & 78.6% ใหม่ได้ทันที</p>
+                            <p class="text-[11px] text-slate-400">เลือกเปลี่ยนฝั่ง BUY/SELL หรือใส่ตัวเลข High/Low เอง แล้วกดปุ่มเพื่อคำนวณใหม่ได้ทันที</p>
                         </div>
                     </div>
 
@@ -834,11 +775,11 @@ HTML_TEMPLATE = """
                     </div>
 
                     <button onclick="applyCustomSwing()" class="btn-interactive w-full py-2.5 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-amber-400 border border-amber-500/40 font-extrabold text-xs rounded-xl">
-                        <i class="fa-solid fa-rotate mr-1"></i> อัปเดตฝั่ง BUY/SELL และตีเส้น 61.8% & 78.6% ใหม่ทันที
+                        <i class="fa-solid fa-rotate mr-1"></i> อัปเดตฝั่ง BUY/SELL และคำนวณราคาใหม่ทันที
                     </button>
                 </div>
 
-                <!-- 4. LIVE SIGNAL FEED & MULTI-TIMEFRAME MATRIX TABS -->
+                <!-- 4. LIVE SIGNAL FEED & MATRIX TABS -->
                 <div class="pro-card rounded-2xl p-5 space-y-3.5">
                     <div class="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
                         <div class="flex gap-2">
@@ -872,22 +813,17 @@ HTML_TEMPLATE = """
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
 
     <script>
-        // ==================================================================
-        // 1. คณิตศาสตร์ Golden Zone (ใช้เฉพาะ 61.8% และ 78.6% + TP1 1:2 + TP2 1:3)
-        // ==================================================================
         function calculateSniperMath(direction, swingHigh, swingLow) {
             const range = Math.max(0.5, swingHigh - swingLow);
             let entry, sl, risk, tp1, tp2;
 
             if (direction === 'SELL') {
-                // ขาลง (SELL): วัดจาก High ลงมา Low -> รอเด้งขึ้นไปที่ 61.8% เพื่อเปิด SELL, ตัดขาดทุนที่ 78.6%
                 entry = swingLow + (range * 0.618);
                 sl    = swingLow + (range * 0.786);
                 risk  = Math.abs(sl - entry);
                 tp1   = entry - (risk * 2);
                 tp2   = entry - (risk * 3);
             } else {
-                // ขาขึ้น (BUY): วัดจาก Low ขึ้นไป High -> รอย่อลงมาที่ 61.8% เพื่อเปิด BUY, ตัดขาดทุนที่ 78.6%
                 entry = swingHigh - (range * 0.618);
                 sl    = swingHigh - (range * 0.786);
                 risk  = Math.abs(entry - sl);
@@ -896,14 +832,9 @@ HTML_TEMPLATE = """
             }
 
             return {
-                entryNum: entry,
-                slNum: sl,
-                tp1Num: tp1,
-                tp2Num: tp2,
-                entry: entry.toFixed(2),
-                sl: sl.toFixed(2),
-                tp1: tp1.toFixed(2),
-                tp2: tp2.toFixed(2),
+                entryNum: entry, slNum: sl, tp1Num: tp1, tp2Num: tp2,
+                entry: entry.toFixed(2), sl: sl.toFixed(2),
+                tp1: tp1.toFixed(2), tp2: tp2.toFixed(2),
                 riskNum: risk,
                 riskDollar: risk.toFixed(2),
                 reward1Dollar: (risk * 2).toFixed(2),
@@ -911,23 +842,16 @@ HTML_TEMPLATE = """
             };
         }
 
-        // ==================================================================
-        // 2. ตั้งค่าการดึงข้อมูลแท่งเทียนย้อนหลัง 1,000 แท่งรายไทม์เฟรม
-        // ==================================================================
         const timeframeMeta = {
-            '1m':    { label: '1 นาที (1M)',    binanceInterval: '1m',  tvInterval: '1',   lookback: 90 },
-            '5m':    { label: '5 นาที (5M)',    binanceInterval: '5m',  tvInterval: '5',   lookback: 96 },
-            '15m':   { label: '15 นาที (15M)',  binanceInterval: '15m', tvInterval: '15',  lookback: 96 },
-            '1h':    { label: '1 ชั่วโมง (1H)', binanceInterval: '1h',  tvInterval: '60',  lookback: 100 },
-            '4h':    { label: '4 ชั่วโมง (4H)', binanceInterval: '4h',  tvInterval: '240', lookback: 100 },
-            'daily': { label: 'รายวัน (Daily)', binanceInterval: '1d',  tvInterval: 'D',   lookback: 90 }
+            '1m':    { label: '1 นาที (1M)',    tvInterval: '1',   lookback: 90 },
+            '5m':    { label: '5 นาที (5M)',    tvInterval: '5',   lookback: 96 },
+            '15m':   { label: '15 นาที (15M)',  tvInterval: '15',  lookback: 96 },
+            '1h':    { label: '1 ชั่วโมง (1H)', tvInterval: '60',  lookback: 100 },
+            '4h':    { label: '4 ชั่วโมง (4H)', tvInterval: '240', lookback: 100 },
+            'daily': { label: 'รายวัน (Daily)', tvInterval: 'D',   lookback: 90 }
         };
 
         const liveTimeframeStore = {};
-        let lwChart = null;
-        let candleSeries = null;
-        let activePriceLines = [];
-        let currentChartMode = 'autofib';
         let currentTfKey = '1h';
         let currentTvLoadedInterval = null;
         let isNewsLocked = false;
@@ -935,52 +859,10 @@ HTML_TEMPLATE = """
         let allCalendarEvents = [];
         let currentNewsFilter = 'ALL';
 
-        function initLightweightChart() {
-            const container = document.getElementById('sniper-lw-chart');
-            container.innerHTML = '';
-
-            lwChart = LightweightCharts.createChart(container, {
-                width: container.clientWidth,
-                height: 500,
-                layout: {
-                    background: { type: 'solid', color: '#050912' },
-                    textColor: '#cbd5e1',
-                    fontFamily: 'JetBrains Mono, Prompt, sans-serif'
-                },
-                grid: {
-                    vertLines: { color: 'rgba(30, 41, 59, 0.45)' },
-                    horzLines: { color: 'rgba(30, 41, 59, 0.45)' }
-                },
-                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-                rightPriceScale: {
-                    borderColor: '#1e293b',
-                    autoScale: true,
-                    scaleMargins: { top: 0.12, bottom: 0.12 }
-                },
-                timeScale: {
-                    borderColor: '#1e293b',
-                    timeVisible: true,
-                    secondsVisible: false,
-                    rightOffset: 14
-                }
-            });
-
-            candleSeries = lwChart.addCandlestickSeries({
-                upColor: '#10b981', downColor: '#f43f5e',
-                borderUpColor: '#10b981', borderDownColor: '#f43f5e',
-                wickUpColor: '#10b981', wickDownColor: '#f43f5e'
-            });
-
-            window.addEventListener('resize', () => {
-                if (lwChart && container.clientWidth > 0) {
-                    lwChart.applyOptions({ width: container.clientWidth });
-                }
-            });
-        }
-
         async function fetchRealGoldCandles(tfKey) {
             const meta = timeframeMeta[tfKey];
-            const url = `https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=${meta.binanceInterval}&limit=1000`;
+            const binanceTf = tfKey === 'daily' ? '1d' : tfKey;
+            const url = `https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=${binanceTf}&limit=500`;
             const res = await fetch(url);
             const raw = await res.json();
 
@@ -1018,102 +900,13 @@ HTML_TEMPLATE = """
             const reason = `แผนเทรดชัดเจน (${actionThai} @ TF ${tfKey.toUpperCase()}): วัดจาก Swing High $${swingHigh.toFixed(2)} กับ Swing Low $${swingLow.toFixed(2)} ➔ ตั้ง ${calcDir} LIMIT ที่ Golden Zone 61.8% ($${mathRes.entry}) วาง SL ที่ 78.6% ($${mathRes.sl}) เป้าทำกำไร TP1 $${mathRes.tp1} และ TP2 $${mathRes.tp2}`;
 
             liveTimeframeStore[tfKey] = {
-                candles, swingHigh, swingLow, currentPrice, range,
+                swingHigh, swingLow, currentPrice, range,
                 calcDir, structure, structureClass,
                 volatility: `$${range.toFixed(2)}`,
                 biasText, biasColor, reason
             };
 
             return liveTimeframeStore[tfKey];
-        }
-
-        // ==================================================================
-        // วาดเฉพาะ 6 เส้นสำคัญเท่านั้น (ไม่มีเส้น 23.6%, 38.2%, 50% มารบกวนสายตา)
-        // ==================================================================
-        function drawCleanFibLinesOnChart(candles, calcDir, swingHigh, swingLow, mathRes) {
-            if (!lwChart || !candleSeries) initLightweightChart();
-
-            activePriceLines.forEach(line => {
-                try { candleSeries.removePriceLine(line); } catch (e) {}
-            });
-            activePriceLines = [];
-
-            candleSeries.setData(candles);
-
-            // 1. เส้น Swing High
-            activePriceLines.push(candleSeries.createPriceLine({
-                price: swingHigh,
-                color: '#94a3b8',
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dotted,
-                axisLabelVisible: true,
-                title: `⬆️ SWING HIGH ($${swingHigh.toFixed(2)})`
-            }));
-
-            // 2. เส้น Swing Low
-            activePriceLines.push(candleSeries.createPriceLine({
-                price: swingLow,
-                color: '#94a3b8',
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dotted,
-                axisLabelVisible: true,
-                title: `⬇️ SWING LOW ($${swingLow.toFixed(2)})`
-            }));
-
-            // 3. เส้นจุดเข้า Golden Zone 61.8% (เขียนบอกชัดเจนว่า BUY หรือ SELL)
-            activePriceLines.push(candleSeries.createPriceLine({
-                price: mathRes.entryNum,
-                color: '#06b6d4',
-                lineWidth: 3,
-                lineStyle: LightweightCharts.LineStyle.Solid,
-                axisLabelVisible: true,
-                title: `🔵 จุดเข้า ${calcDir} (Golden Zone 61.8%)`
-            }));
-
-            // 4. เส้นตัดขาดทุน Stop Loss 78.6%
-            activePriceLines.push(candleSeries.createPriceLine({
-                price: mathRes.slNum,
-                color: '#f43f5e',
-                lineWidth: 2,
-                lineStyle: LightweightCharts.LineStyle.Solid,
-                axisLabelVisible: true,
-                title: `🔴 STOP LOSS (78.6%)`
-            }));
-
-            // 5. เส้นทำกำไร TP1 (RR 1:2)
-            activePriceLines.push(candleSeries.createPriceLine({
-                price: mathRes.tp1Num,
-                color: '#10b981',
-                lineWidth: 2,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
-                axisLabelVisible: true,
-                title: `🟢 TP 1 (RR 1:2)`
-            }));
-
-            // 6. เส้นทำกำไรหลัก TP2 (RR 1:3)
-            activePriceLines.push(candleSeries.createPriceLine({
-                price: mathRes.tp2Num,
-                color: '#f59e0b',
-                lineWidth: 2,
-                lineStyle: LightweightCharts.LineStyle.Solid,
-                axisLabelVisible: true,
-                title: `🟡 TP 2 เป้าหลัก (RR 1:3)`
-            }));
-
-            const total = candles.length;
-            if (total > 110) {
-                lwChart.timeScale().setVisibleLogicalRange({ from: total - 110, to: total + 10 });
-            } else {
-                lwChart.timeScale().fitContent();
-            }
-        }
-
-        function resetSniperZoom() {
-            const st = liveTimeframeStore[currentTfKey];
-            if (lwChart && st && st.candles) {
-                const total = st.candles.length;
-                lwChart.timeScale().setVisibleLogicalRange({ from: Math.max(0, total - 110), to: total + 10 });
-            }
         }
 
         function recalcLotSize() {
@@ -1126,9 +919,6 @@ HTML_TEMPLATE = """
             document.getElementById('calc-lot-result').innerText = `แนะนำ: ${finalLot} Lot (ความเสี่ยง $${riskMoney.toFixed(1)})`;
         }
 
-        // ==================================================================
-        // 3. อัปเดตป้ายไฟบอก BUY / SELL ขนาดใหญ่ให้ชัดเจน 100%
-        // ==================================================================
         function updateGiantDirectionBanners(tfKey, calcDir, swingHigh, swingLow, mathRes) {
             const chartBanner = document.getElementById('chart-giant-signal-banner');
             const chartIconBox = document.getElementById('chart-signal-icon-box');
@@ -1145,7 +935,6 @@ HTML_TEMPLATE = """
             chartEntryPrice.innerText = `$${mathRes.entry}`;
 
             if (calcDir === 'SELL') {
-                // โทนสีแดงชัดเจนสำหรับฝั่ง SELL
                 chartBanner.className = "p-4 rounded-2xl border-2 border-rose-500/80 bg-gradient-to-r from-rose-950/80 via-slate-950 to-slate-950 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-lg shadow-rose-500/15";
                 chartIconBox.className = "w-12 h-12 rounded-xl bg-rose-500 text-white flex items-center justify-center text-2xl font-black shrink-0 shadow-lg";
                 chartIconBox.innerHTML = '<i class="fa-solid fa-arrow-trend-down"></i>';
@@ -1162,7 +951,6 @@ HTML_TEMPLATE = """
                 document.getElementById('pill-entry-label').innerText = "🔵 จุดเข้า SELL (61.8%)";
                 document.getElementById('card-entry-title').innerText = "🔵 จุดเข้า SELL (Fib 61.8%)";
             } else {
-                // โทนสีเขียวชัดเจนสำหรับฝั่ง BUY
                 chartBanner.className = "p-4 rounded-2xl border-2 border-emerald-500/80 bg-gradient-to-r from-emerald-950/80 via-slate-950 to-slate-950 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-lg shadow-emerald-500/15";
                 chartIconBox.className = "w-12 h-12 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center text-2xl font-black shrink-0 shadow-lg";
                 chartIconBox.innerHTML = '<i class="fa-solid fa-arrow-trend-up"></i>';
@@ -1184,14 +972,12 @@ HTML_TEMPLATE = """
         async function triggerAutoFibonacciCalculation(showNotification = true) {
             const icon = document.getElementById('fib-spin-icon');
             if (icon) icon.className = "fa-solid fa-spinner fa-spin";
-            document.getElementById('autofib-status-text').innerText = `⏳ กำลังคำนวณจุดเข้า 61.8% & 78.6%...`;
 
             try {
                 const state = await fetchRealGoldCandles(currentTfKey);
                 applyStateToUI(currentTfKey, state);
-                document.getElementById('autofib-status-text').innerText = `● แสดงเฉพาะเส้น 61.8%, 78.6%, High/Low, TP1, TP2 (${timeframeMeta[currentTfKey].label})`;
                 if (showNotification) {
-                    showToast(`⚡ คำนวณจุดเข้า ${state.calcDir} ที่ Fib 61.8% (TF ${currentTfKey.toUpperCase()}) สำเร็จ!`);
+                    showToast(`⚡ คำนวณจุดเข้า ${state.calcDir} ที่ Fib 61.8% สำเร็จ!`);
                 }
             } catch (e) {
                 console.error(e);
@@ -1214,11 +1000,8 @@ HTML_TEMPLATE = """
             }
 
             document.getElementById('active-tf-badge').innerText = 'TF: ' + tfKey.toUpperCase();
-            document.getElementById('tv-tf-label').innerText = 'TF: ' + tfKey.toUpperCase();
 
-            if (currentChartMode !== 'autofib') {
-                loadTradingViewStudio(meta.tvInterval);
-            }
+            loadTradingViewStudio(meta.tvInterval);
             await triggerAutoFibonacciCalculation(false);
         }
 
@@ -1268,7 +1051,6 @@ HTML_TEMPLATE = """
 
             updateGiantDirectionBanners(tfKey, state.calcDir, state.swingHigh, state.swingLow, mathRes);
             recalcLotSize();
-            drawCleanFibLinesOnChart(state.candles, state.calcDir, state.swingHigh, state.swingLow, mathRes);
             renderMatrixTable(tfKey);
         }
 
@@ -1308,70 +1090,29 @@ HTML_TEMPLATE = """
 
             updateGiantDirectionBanners(currentTfKey, dir, high, low, mathRes);
             recalcLotSize();
-            drawCleanFibLinesOnChart(curState.candles, dir, high, low, mathRes);
-            showToast(`✅ อัปเดตเป็นฝั่ง ${dir} และตีเส้น 61.8% & 78.6% ใหม่เรียบร้อย!`);
-        }
-
-        // ==================================================================
-        // 4. สลับโหมดการแสดงผลกราฟ
-        // ==================================================================
-        function switchChartMode(mode) {
-            currentChartMode = mode;
-            const tvSec = document.getElementById('tv-chart-section');
-            const fibSec = document.getElementById('autofib-chart-section');
-            const btnSplit = document.getElementById('mode-btn-split');
-            const btnTv = document.getElementById('mode-btn-tv');
-            const btnFib = document.getElementById('mode-btn-autofib');
-
-            const inactiveClass = "btn-interactive py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-950 text-slate-300 border border-slate-800 hover:border-amber-500/50";
-            const activeClass = "btn-interactive py-2.5 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-slate-950 shadow-lg";
-
-            btnFib.className = mode === 'autofib' ? activeClass : inactiveClass;
-            btnTv.className = mode === 'tv' ? activeClass : inactiveClass;
-            btnSplit.className = mode === 'split' ? activeClass : inactiveClass;
-
-            if (mode === 'split') {
-                fibSec.classList.remove('hidden');
-                tvSec.classList.remove('hidden');
-                loadTradingViewStudio(timeframeMeta[currentTfKey].tvInterval);
-            } else if (mode === 'tv') {
-                tvSec.classList.remove('hidden');
-                fibSec.classList.add('hidden');
-                loadTradingViewStudio(timeframeMeta[currentTfKey].tvInterval);
-            } else {
-                tvSec.classList.add('hidden');
-                fibSec.classList.remove('hidden');
-            }
-
-            setTimeout(() => {
-                if (lwChart) {
-                    const container = document.getElementById('sniper-lw-chart');
-                    if (container.clientWidth > 0) lwChart.applyOptions({ width: container.clientWidth });
-                }
-            }, 60);
+            showToast(`✅ อัปเดตเป็นฝั่ง ${dir} และคำนวณราคา 61.8% ใหม่เรียบร้อย!`);
         }
 
         function loadTradingViewStudio(intervalCode) {
             if (currentTvLoadedInterval === intervalCode) return;
             currentTvLoadedInterval = intervalCode;
-            const container = document.getElementById('tradingview_studio_chart');
+            const container = document.getElementById('tradingview_advanced_chart');
             container.innerHTML = '';
-            // เอา Auto Fib ของ TradingView ที่ตีเส้นรุ้งรกๆ ออก เพื่อให้กราฟ TradingView สะอาดตาที่สุด
             new TradingView.widget({
                 "width": "100%",
-                "height": "500",
+                "height": "540",
                 "symbol": "OANDA:XAUUSD",
                 "interval": intervalCode,
                 "timezone": "Asia/Bangkok",
                 "theme": "dark",
                 "style": "1",
                 "locale": "th",
-                "toolbar_bg": "#050912",
+                "toolbar_bg": "#03060c",
                 "enable_publishing": false,
                 "hide_side_toolbar": false,
                 "allow_symbol_change": true,
-                "studies": [],
-                "container_id": "tradingview_studio_chart"
+                "studies": ["RSI@tv-basicstudies"],
+                "container_id": "tradingview_advanced_chart"
             });
         }
 
@@ -1436,9 +1177,6 @@ HTML_TEMPLATE = """
             renderMatrixTable(currentTfKey);
         }
 
-        // ==================================================================
-        // 5. ระบบปฏิทินข่าว Forex Factory & LINE OA
-        // ==================================================================
         async function loadSystemState() {
             try {
                 const res = await fetch('/api/system-state');
@@ -1672,26 +1410,6 @@ HTML_TEMPLATE = """
             setTimeout(() => toast.classList.add('hidden'), 2800);
         }
 
-        setInterval(async () => {
-            try {
-                const meta = timeframeMeta[currentTfKey];
-                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=${meta.binanceInterval}&limit=1`);
-                const data = await res.json();
-                if (data && data.length > 0 && candleSeries) {
-                    const k = data[0];
-                    const liveCandle = {
-                        time: Math.floor(k[0] / 1000),
-                        open: parseFloat(parseFloat(k[1]).toFixed(2)),
-                        high: parseFloat(parseFloat(k[2]).toFixed(2)),
-                        low: parseFloat(parseFloat(k[3]).toFixed(2)),
-                        close: parseFloat(parseFloat(k[4]).toFixed(2))
-                    };
-                    candleSeries.update(liveCandle);
-                    document.getElementById('live-ticker-price').innerText = '$' + liveCandle.close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                }
-            } catch (e) {}
-        }, 4000);
-
         window.addEventListener('DOMContentLoaded', async () => {
             const now = new Date();
             document.getElementById('current-date-label').innerText = 'วัน-เวลาปัจจุบัน: ' + now.toLocaleDateString('th-TH', {
@@ -1699,7 +1417,7 @@ HTML_TEMPLATE = """
             });
             document.getElementById('new-news-date').value = now.toISOString().split('T')[0];
 
-            initLightweightChart();
+            loadTradingViewStudio('60');
             await selectTimeframe('1h');
             await loadSystemState();
             preloadAllTimeframes();

@@ -1568,4 +1568,315 @@ HTML_TEMPLATE = """
 
         async function addNewsItem() {
             const dateVal = document.getElementById('new-news-date').value;
-            const timeVal = document.getElementById('new-news
+            const timeVal = document.getElementById('new-news-time').value || '19:30';
+            const eventVal = document.getElementById('new-news-Event').value;
+            const impactVal = document.getElementById('new-news-impact').value;
+            if (!eventVal) { showToast('⚠️ กรุณาระบุชื่อข่าวเศรษฐกิจ'); return; }
+
+            const res = await fetch('/api/add-news', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date: dateVal, time: timeVal, event: eventVal, impact: impactVal })
+            });
+            const data = await res.json();
+            allCalendarEvents = data.economic_calendar;
+            renderCalendarTable();
+            updateNextHighNewsBanner();
+            document.getElementById('add-news-modal').classList.add('hidden');
+            document.getElementById('new-news-Event').value = '';
+            showToast('✅ เพิ่มรายการข่าวพร้อมระบุวัน-เวลาเรียบร้อย!');
+        }
+
+        function renderSignalFeed(signals) {
+            const container = document.getElementById('right-tab-feed');
+            document.getElementById('feed-counter-label').innerText = `${signals.length} รายการล่าสุด`;
+            container.innerHTML = '';
+
+            signals.forEach(sig => {
+                const isSell = sig.direction === 'SELL';
+                const borderCol = isSell ? 'border-rose-500' : 'border-emerald-500';
+                const dirBadge = isSell
+                    ? '<span class="px-2 py-0.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded text-[10px] font-black">🔻 SELL 61.8%</span>'
+                    : '<span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-black">🟢 BUY 61.8%</span>';
+
+                const card = document.createElement('div');
+                card.className = `p-3.5 rounded-xl bg-slate-950/90 border border-slate-800/90 border-l-4 ${borderCol} space-y-1.5`;
+                card.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div class="flex items-center gap-2">
+                            <span class="font-black font-mono-num text-white text-sm">${sig.symbol}</span>
+                            ${dirBadge}
+                            <span class="text-[11px] font-mono-num text-amber-400 font-bold">TF ${sig.tf}</span>
+                        </div>
+                        <span class="text-[10px] font-mono-num text-slate-400"><i class="fa-regular fa-clock mr-1"></i>${sig.date || ''} ${sig.time}</span>
+                    </div>
+                    <div class="grid grid-cols-4 gap-1.5 pt-1 text-[11px] font-mono-num">
+                        <div class="bg-slate-900 px-2 py-1 rounded"><span class="text-slate-500 block text-[9px]">ENTRY</span><span class="text-cyan-400 font-bold">$${sig.entry}</span></div>
+                        <div class="bg-slate-900 px-2 py-1 rounded"><span class="text-slate-500 block text-[9px]">SL (78.6%)</span><span class="text-rose-400 font-bold">$${sig.sl}</span></div>
+                        <div class="bg-slate-900 px-2 py-1 rounded"><span class="text-slate-500 block text-[9px]">TP1 (1:2)</span><span class="text-emerald-400 font-bold">$${sig.tp1}</span></div>
+                        <div class="bg-slate-900 px-2 py-1 rounded"><span class="text-slate-500 block text-[9px]">TP2 (1:3)</span><span class="text-amber-400 font-bold">$${sig.tp2}</span></div>
+                    </div>
+                    <div class="flex justify-between items-center pt-1 text-[11px]">
+                        <span class="text-slate-400 truncate max-w-[70%]">${sig.reason}</span>
+                        <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-mono-num text-[10px] font-bold">${sig.status}</span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function broadcastCurrentSignal() {
+            if (isNewsLocked) {
+                showToast('🛑 ระบบล็อกอยู่เนื่องจากอยู่ในช่วงข่าวแรง!');
+                return;
+            }
+
+            const payload = {
+                symbol: 'XAUUSD',
+                tf: currentTfKey.toUpperCase(),
+                direction: document.getElementById('custom-dir').value,
+                entry: document.getElementById('val-entry').innerText.replace('$', ''),
+                sl: document.getElementById('val-sl').innerText.replace('$', ''),
+                tp1: document.getElementById('val-tp1').innerText.replace('$', ''),
+                tp2: document.getElementById('val-tp2').innerText.replace('$', ''),
+                lot_advice: document.getElementById('calc-lot-result').innerText,
+                reason: document.getElementById('setup-reason').value
+            };
+
+            const res = await fetch('/api/send-signal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                renderSignalFeed(data.signal_history);
+                switchRightTab('feed');
+                showToast('🚀 ส่งสัญญาณ Fibonacci เข้า LINE OA และบันทึกในระบบเรียบร้อย!');
+            } else {
+                const err = await res.json();
+                showToast('⚠️ ' + (err.message || 'ไม่สามารถส่งสัญญาณได้'));
+            }
+        }
+
+        function copyPrice(elementId) {
+            const text = document.getElementById(elementId).innerText.replace('$', '');
+            navigator.clipboard.writeText(text);
+            showToast(`✅ คัดลอกราคา $${text} เรียบร้อย!`);
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast-notify');
+            document.getElementById('toast-notify-text').innerText = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 2800);
+        }
+
+        // อัปเดตเฉพาะราคาแท่งเทียนปัจจุบันเบาๆ โดยไม่รบกวนเส้น Fibonacci ที่คำนวณไว้แล้ว
+        setInterval(async () => {
+            try {
+                const meta = timeframeMeta[currentTfKey];
+                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=${meta.binanceInterval}&limit=1`);
+                const data = await res.json();
+                if (data && data.length > 0 && candleSeries) {
+                    const k = data[0];
+                    const liveCandle = {
+                        time: Math.floor(k[0] / 1000),
+                        open: parseFloat(parseFloat(k[1]).toFixed(2)),
+                        high: parseFloat(parseFloat(k[2]).toFixed(2)),
+                        low: parseFloat(parseFloat(k[3]).toFixed(2)),
+                        close: parseFloat(parseFloat(k[4]).toFixed(2))
+                    };
+                    candleSeries.update(liveCandle);
+                    document.getElementById('live-ticker-price').innerText = '$' + liveCandle.close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+            } catch (e) {}
+        }, 4000);
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            const now = new Date();
+            document.getElementById('current-date-label').innerText = 'วัน-เวลาปัจจุบัน: ' + now.toLocaleDateString('th-TH', {
+                weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'
+            });
+            document.getElementById('new-news-date').value = now.toISOString().split('T')[0];
+
+            initLightweightChart();
+            await selectTimeframe('1h');
+            await loadSystemState();
+            preloadAllTimeframes();
+        });
+    </script>
+</body>
+</html>
+"""
+
+
+# ==============================================================================
+# BACKEND API ENDPOINTS (ดึงข่าวจริง Forex Factory + ส่ง LINE OA)
+# ==============================================================================
+@app.route('/')
+def index():
+    return render_template_string(HTML_TEMPLATE)
+
+
+@app.route('/api/system-state', methods=['GET'])
+def get_system_state():
+    now_dt = datetime.now(TH_TZ)
+    calendar_events = fetch_forex_factory_calendar()
+
+    # ตรวจสอบว่ามีข่าวแดงที่กำลังอยู่ในช่วงเวลา ±30 นาทีตอนนี้หรือไม่
+    auto_locking_event = next((ev for ev in calendar_events if ev.get("is_locking_now")), None)
+    is_locked = SYSTEM_STATE["manual_news_lock"] or (auto_locking_event is not None)
+
+    if auto_locking_event:
+        lock_reason = f"ล็อกอัตโนมัติ: ข่าวแดง {auto_locking_event['event']} ({auto_locking_event['time_label']})"
+    elif SYSTEM_STATE["manual_news_lock"]:
+        lock_reason = "NEWS LOCKED (เปิดโหมดล็อกข่าวด้วยตัวเอง)"
+    else:
+        lock_reason = "SAFE MODE (ตลาดปกติ)"
+
+    return jsonify({
+        "safe_to_trade": not is_locked,
+        "news_locked": is_locked,
+        "lock_reason": lock_reason,
+        "latest_signal": SYSTEM_STATE["latest_signal"],
+        "signal_history": SYSTEM_STATE["signal_history"],
+        "economic_calendar": calendar_events,
+        "server_time": now_dt.strftime("%Y-%m-%d %H:%M:%S")
+    })
+
+
+@app.route('/api/toggle-news-lock', methods=['POST'])
+def toggle_news_lock():
+    SYSTEM_STATE["manual_news_lock"] = not SYSTEM_STATE["manual_news_lock"]
+    lock_reason = (
+        "NEWS LOCKED (ล็อกการส่งสัญญาณช่วงข่าวแดง)"
+        if SYSTEM_STATE["manual_news_lock"]
+        else "SAFE MODE (เปิดรับสัญญาณปกติ)"
+    )
+    return jsonify({
+        "status": "ok",
+        "news_locked": SYSTEM_STATE["manual_news_lock"],
+        "lock_reason": lock_reason
+    })
+
+
+@app.route('/api/add-news', methods=['POST'])
+def add_news():
+    data = request.json or {}
+    now_dt = datetime.now(TH_TZ)
+    date_str = data.get("date") or now_dt.strftime("%Y-%m-%d")
+    time_str = data.get("time") or "19:30"
+    impact = data.get("impact", "HIGH").upper()
+
+    try:
+        dt_parsed = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=TH_TZ)
+    except Exception:
+        dt_parsed = now_dt
+
+    countdown, urgency, is_locking = compute_countdown_and_lock(dt_parsed, now_dt, impact)
+    lock_start = (dt_parsed - timedelta(minutes=30)).strftime("%H:%M")
+    lock_end = (dt_parsed + timedelta(minutes=30)).strftime("%H:%M")
+
+    new_item = {
+        "timestamp": int(dt_parsed.timestamp()),
+        "date_label": format_thai_date(dt_parsed),
+        "iso_date": dt_parsed.strftime("%Y-%m-%d"),
+        "time_label": dt_parsed.strftime("%H:%M น."),
+        "currency": "USD",
+        "event": data.get("event", "Custom Economic Event"),
+        "impact": impact,
+        "forecast": "-",
+        "previous": "-",
+        "countdown": countdown,
+        "urgency": urgency,
+        "is_locking_now": is_locking,
+        "status": f"ล็อกอัตโนมัติ {lock_start}-{lock_end} น." if impact == "HIGH" else "ลดขนาด Lot 50%",
+        "source": "Custom"
+    }
+    SYSTEM_STATE["custom_news"].insert(0, new_item)
+    return jsonify({"status": "ok", "economic_calendar": fetch_forex_factory_calendar()})
+
+
+@app.route('/api/send-signal', methods=['POST'])
+def send_signal():
+    now_dt = datetime.now(TH_TZ)
+    calendar_events = fetch_forex_factory_calendar()
+    auto_locking_event = next((ev for ev in calendar_events if ev.get("is_locking_now")), None)
+
+    if SYSTEM_STATE["manual_news_lock"] or auto_locking_event:
+        return jsonify({
+            "status": "blocked",
+            "message": "ระบบล็อกการส่งสัญญาณเนื่องจากอยู่ในช่วงเฝ้าระวังข่าวแรง (News Shield Active)"
+        }), 403
+
+    data = request.json or {}
+    sig = {
+        "id": len(SYSTEM_STATE["signal_history"]) + 101,
+        "date": format_thai_date(now_dt),
+        "time": now_dt.strftime("%H:%M:%S"),
+        "symbol": data.get("symbol", "XAUUSD"),
+        "tf": data.get("tf", "1H"),
+        "direction": data.get("direction", "SELL"),
+        "entry": data.get("entry", "0.00"),
+        "sl": data.get("sl", "0.00"),
+        "tp1": data.get("tp1", "0.00"),
+        "tp2": data.get("tp2", "0.00"),
+        "rr": "1:3",
+        "status": "LINE SENT",
+        "reason": data.get("reason", "Golden Zone 61.8% Setup")
+    }
+
+    SYSTEM_STATE["latest_signal"] = sig
+    SYSTEM_STATE["signal_history"].insert(0, sig)
+
+    icon = "🔻" if sig["direction"] == "SELL" else "🟢"
+    lot_advice = data.get("lot_advice", "คุมความเสี่ยง 1-1.5% ต่อไม้")
+    msg = (
+        f"🎯 GOLD AI SNIPER PRO (FIB 61.8%)\n"
+        f"📅 {sig['date']} เวลา {sig['time']} น.\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"📊 สินทรัพย์: {sig['symbol']} (TF: {sig['tf']})\n"
+        f"⚡ คำสั่ง: {icon} {sig['direction']} LIMIT\n"
+        f"🔵 จุดเข้า (Entry 61.8%): ${sig['entry']}\n"
+        f"🔴 ตัดขาดทุน (SL 78.6%): ${sig['sl']}\n"
+        f"🟢 เป้าที่ 1 (TP1 1:2): ${sig['tp1']}\n"
+        f"🟡 เป้าหลัก (TP2 1:3): ${sig['tp2']}\n"
+        f"⚖️ ขนาดพอร์ต: {lot_advice}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🧠 วิเคราะห์: {sig['reason']}"
+    )
+
+    notify_line(msg)
+
+    return jsonify({
+        "status": "success",
+        "latest_signal": sig,
+        "signal_history": SYSTEM_STATE["signal_history"]
+    })
+
+
+def notify_line(text):
+    if not LINE_CHANNEL_ACCESS_TOKEN:
+        return
+    try:
+        payload = json.dumps({
+            "messages": [{"type": "text", "text": text}]
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.line.me/v2/bot/message/broadcast",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
+            }
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        print("LINE Broadcast Error:", e)
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)

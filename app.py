@@ -10,32 +10,52 @@ from flask import Flask, render_template_string, request, jsonify
 app = Flask(__name__)
 
 # ==============================================================================
-# 1. ตั้งค่า TELEGRAM BOT API (ใส่ Token ของคุณซีไว้ให้พร้อมใช้งาน)
+# 1. TELEGRAM BOT & SYSTEM CONFIGURATION
 # ==============================================================================
 TELEGRAM_BOT_TOKEN = os.environ.get(
-    "TELEGRAM_BOT_TOKEN", 
+    "TELEGRAM_BOT_TOKEN",
     "8718020170:AAFj1pPh4HLi8iVaz12hi_qAD_J4Dnlz1g"
-)
+).strip()
 TELEGRAM_BOT_USERNAME = "gold_ai_sniper_pro_bot"
 
 # เขตเวลาประเทศไทย (UTC+7)
 TH_TZ = timezone(timedelta(hours=7))
 
-# แคชข้อมูลข่าว Forex Factory
+# เกณฑ์ตัดสินตลาด Sideway (หากระยะ Swing High - Low ใน 100 แท่ง แคบกว่า $8.00)
+SIDEWAY_THRESHOLD_DOLLAR = 8.00
+
+# แคชตารางข่าว Forex Factory
 FF_CACHE = {
     "last_fetched": 0,
     "events": []
 }
 
-# ฐานข้อมูลจำลองสำหรับเก็บข้อมูลผู้ใช้และตั้งค่าการแจ้งเตือน (MVP)
-USERS_DB = {}
+# ฐานข้อมูลผู้ใช้ในหน่วยความจำ (รองรับ Multi-user / Default Chat ID ของคุณซี)
+USERS_DB = {
+    "default@gold.ai": {
+        "email": "default@gold.ai",
+        "chat_id": "8948986514",
+        "preferred_tf": "5m",
+        "start_time": "08:00",
+        "end_time": "22:00",
+        "alert_05": True,
+        "alert_618": True,
+        "alert_sideway": True,
+        "alert_morning_news": True,
+        "balance": 1000.0,
+        "risk_pct": 1.5,
+        "auto_alert": True
+    }
+}
 
-# สถานะระบบหลัก
+# สถานะระบบส่วนกลางและหน่วยความจำป้องกันการส่งซ้ำ (Deduplication Memory)
 SYSTEM_STATE = {
     "manual_news_lock": False,
-    "lock_reason": "ตลาดปกติ (Normal Market Conditions)",
+    "lock_reason": "NORMAL MARKET REGIME",
     "latest_signal": None,
-    "last_alert_ memory": {},  # ป้องกันการส่งแจ้งเตือนซ้ำในสวิงเดิม
+    "last_alert_memory": {},     # เก็บสถานะการแจ้งเตือนต่อสวิง {swing_key: {"sent_05": bool, "sent_618": bool, "sent_sideway": bool}}
+    "morning_brief_memory": {},  # เก็บสถานะการส่งข่าวรายวัน {email_YYYY-MM-DD: bool}
+    "scanner_last_run": "-",
     "signal_history": [
         {
             "id": 102,
@@ -44,14 +64,16 @@ SYSTEM_STATE = {
             "symbol": "XAUUSD",
             "tf": "5M",
             "direction": "SELL",
+            "regime": "TRENDING",
+            "range": "14.20",
             "fib_05": "2736.80",
             "entry": "2738.50",
             "sl": "2745.20",
             "tp1": "2725.10",
             "tp2": "2718.40",
             "rr": "1:3",
-            "status": "TELEGRAM SENT",
-            "reason": "ราคาแตะระดับเฝ้าระวัง 0.5 และเข้าโซนคำนวณทางเทคนิค 61.8%"
+            "status": "DISPATCHED",
+            "reason": "Technical retracement to 61.8% Golden Zone after touching 0.5 preparation level."
         }
     ],
     "custom_news": []
@@ -71,7 +93,7 @@ def format_thai_date(dt_obj):
 
 
 # ==============================================================================
-# 2. ฟังก์ชันจัดการ TELEGRAM BOT & ค้นหา CHAT ID อัตโนมัติ
+# 2. TELEGRAM BOT ENGINE & AUTO CHAT-ID DISCOVERY
 # ==============================================================================
 def send_telegram_message(chat_id, text):
     if not TELEGRAM_BOT_TOKEN or not chat_id:
@@ -81,36 +103,53 @@ def send_telegram_message(chat_id, text):
         payload = json.dumps({
             "chat_id": str(chat_id).strip(),
             "text": text,
-            "parse_mode": "HTML"
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
         }).encode("utf-8")
         req = urllib.request.Request(
             url,
             data=payload,
-            headers={"Content-Type": "application/json"}
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "GoldAISniperInstitutional/5.0"
+            }
         )
-        with urllib.request.urlopen(req, timeout=6) as resp:
+        with urllib.request.urlopen(req, timeout=8) as resp:
             res_data = json.loads(resp.read().decode("utf-8"))
-            return res_data.get("ok", False), "Sent"
+            if res_data.get("ok"):
+                return True, "OK"
+            return False, res_data.get("description", "Telegram API Error")
+    except urllib.error.HTTPError as he:
+        try:
+            err_body = he.read().decode("utf-8")
+            err_json = json.loads(err_body)
+            return False, f"HTTP {he.code}: {err_json.get('description', err_body)}"
+        except Exception:
+            return False, f"HTTP Error {he.code}: {he.reason}"
     except Exception as e:
-        print("Telegram Send Error:", e)
         return False, str(e)
 
 
 def fetch_latest_telegram_chat_id():
-    """ดึง Chat ID ล่าสุดจากคนที่เพิ่งกด /start ในบอท"""
+    """ดึง Chat ID ล่าสุดจากคนที่เพิ่งกด /start หรือทักแชทบอท"""
     if not TELEGRAM_BOT_TOKEN:
         return None, None
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates?limit=10"
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates?limit=25"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=6) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if data.get("ok") and data.get("result"):
                 for item in reversed(data["result"]):
-                    msg = item.get("message") or item.get("my_chat_member")
+                    msg = (
+                        item.get("message")
+                        or item.get("edited_message")
+                        or item.get("my_chat_member")
+                        or item.get("channel_post")
+                    )
                     if msg and "chat" in msg:
                         chat_id = str(msg["chat"]["id"])
-                        first_name = msg["chat"].get("first_name", "Trader")
+                        first_name = msg["chat"].get("first_name") or msg["chat"].get("title") or "Trader"
                         return chat_id, first_name
     except Exception as e:
         print("Telegram getUpdates Error:", e)
@@ -118,44 +157,63 @@ def fetch_latest_telegram_chat_id():
 
 
 # ==============================================================================
-# 3. ฟังก์ชันคำนวณ FIBONACCI (รวมระดับ 0.5, 61.8%, 78.6%) & ดึงราคาหลังบ้าน
+# 3. QUANTITATIVE FIBONACCI & SIDEWAY REGIME ENGINE
 # ==============================================================================
-def calculate_fib_levels(direction, swing_high, swing_low):
-    rng = max(0.5, swing_high - swing_low)
+def calculate_fib_levels(direction, swing_high, swing_low, balance=1000.0, risk_pct=1.5):
+    rng = max(0.50, swing_high - swing_low)
+    is_sideway = rng < SIDEWAY_THRESHOLD_DOLLAR
+
     if direction == "SELL":
         fib_05 = swing_low + (rng * 0.500)
         entry = swing_low + (rng * 0.618)
         sl = swing_low + (rng * 0.786)
         risk = abs(sl - entry)
-        tp1 = entry - (risk * 2)
-        tp2 = entry - (risk * 3)
+        tp1 = entry - (risk * 2.0)
+        tp2 = entry - (risk * 3.0)
     else:
         fib_05 = swing_high - (rng * 0.500)
         entry = swing_high - (rng * 0.618)
         sl = swing_high - (rng * 0.786)
         risk = abs(entry - sl)
-        tp1 = entry + (risk * 2)
-        tp2 = entry + (risk * 3)
+        tp1 = entry + (risk * 2.0)
+        tp2 = entry + (risk * 3.0)
+
+    risk_money = balance * (risk_pct / 100.0)
+    loss_per_lot = max(0.50, risk) * 100.0
+    rec_lot = max(0.01, round(risk_money / loss_per_lot, 2))
 
     return {
         "direction": direction,
         "swing_high": round(swing_high, 2),
         "swing_low": round(swing_low, 2),
+        "range": round(rng, 2),
+        "is_sideway": is_sideway,
+        "regime": "SIDEWAY" if is_sideway else "TRENDING",
         "fib_05": round(fib_05, 2),
         "entry": round(entry, 2),
         "sl": round(sl, 2),
         "tp1": round(tp1, 2),
         "tp2": round(tp2, 2),
-        "risk": round(risk, 2)
+        "risk": round(risk, 2),
+        "reward1": round(risk * 2.0, 2),
+        "reward2": round(risk * 3.0, 2),
+        "recommended_lot": f"{rec_lot:.2f}"
     }
 
 
 def fetch_server_gold_candles(tf_key="5m"):
-    tf_map = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "daily": "1d"}
-    b_tf = tf_map.get(tf_key.lower(), "5m")
-    url = f"https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval={b_tf}&limit=100"
+    tf_map = {
+        "1m": ("1m", 90),
+        "5m": ("5m", 96),
+        "15m": ("15m", 96),
+        "1h": ("1h", 100),
+        "4h": ("4h", 100),
+        "daily": ("1d", 90)
+    }
+    b_tf, lookback = tf_map.get(tf_key.lower(), ("5m", 96))
+    url = f"https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval={b_tf}&limit={lookback}"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=5) as resp:
+    with urllib.request.urlopen(req, timeout=6) as resp:
         raw = json.loads(resp.read().decode("utf-8"))
 
     swing_high = -1e9
@@ -177,117 +235,12 @@ def fetch_server_gold_candles(tf_key="5m"):
     direction = "SELL" if high_idx < low_idx else "BUY"
     levels = calculate_fib_levels(direction, swing_high, swing_low)
     levels["current_price"] = round(current_price, 2)
+    levels["tf"] = tf_key.upper()
     return levels
 
 
-def is_within_schedule(now_dt, start_str, end_str):
-    try:
-        cur_mins = now_dt.hour * 60 + now_dt.minute
-        sh, sm = map(int, start_str.split(":"))
-        eh, em = map(int, end_str.split(":"))
-        start_mins = sh * 60 + sm
-        end_mins = eh * 60 + em
-        if start_mins <= end_mins:
-            return start_mins <= cur_mins <= end_mins
-        else:
-            return cur_mins >= start_mins or cur_mins <= end_mins
-    except Exception:
-        return True
-
-
-def background_price_scanner():
-    """รันหลังบ้านตลอด 24 ชม. เพื่อเช็กราคาแตะ 0.5 หรือ 61.8% แล้วส่งเข้า Telegram อัตโนมัติ"""
-    while True:
-        try:
-            now_dt = datetime.now(TH_TZ)
-            calendar_events = fetch_forex_factory_calendar()
-            auto_locking = any(ev.get("is_locking_now") for ev in calendar_events)
-            is_locked = SYSTEM_STATE["manual_news_lock"] or auto_locking
-
-            if not is_locked and USERS_DB:
-                # รวบรวม Timeframe ที่ผู้ใช้ตั้งค่าไว้
-                active_tfs = set()
-                for u in USERS_DB.values():
-                    if u.get("chat_id") and u.get("auto_alert", True):
-                        active_tfs.add(u.get("preferred_tf", "5m").lower())
-
-                tf_data_cache = {}
-                for tf in active_tfs:
-                    try:
-                        tf_data_cache[tf] = fetch_server_gold_candles(tf)
-                    except Exception:
-                        pass
-
-                for email, user in list(USERS_DB.items()):
-                    chat_id = user.get("chat_id")
-                    if not chat_id or not user.get("auto_alert", True):
-                        continue
-
-                    if not is_within_schedule(now_dt, user.get("start_time", "08:00"), user.get("end_time", "23:59")):
-                        continue
-
-                    tf = user.get("preferred_tf", "5m").lower()
-                    data = tf_data_cache.get(tf)
-                    if not data:
-                        continue
-
-                    price = data["current_price"]
-                    fib_05 = data["fib_05"]
-                    entry_618 = data["entry"]
-                    direction = data["direction"]
-                    rng = max(1.0, data["swing_high"] - data["swing_low"])
-                    tolerance = max(0.45, rng * 0.035)  # ระยะบัฟเฟอร์แตะโซน
-
-                    swing_key = f"{email}_{tf}_{data['swing_high']}_{data['swing_low']}"
-                    mem = SYSTEM_STATE["last_alert_ memory"].get(swing_key, {})
-
-                    # 1. เช็กการแตะระดับ 0.5 (แจ้งเตือนล่วงหน้า)
-                    if user.get("alert_05", True) and not mem.get("sent_05"):
-                        if abs(price - fib_05) <= tolerance:
-                            msg_05 = (
-                                f"⚠️ <b>[เตรียมตัว] ราคาแตะระดับ 0.5 (50.0%)</b>\n"
-                                f"📊 <b>XAUUSD ({tf.upper()})</b> • โครงสร้างฝั่ง <b>{direction}</b>\n"
-                                f"━━━━━━━━━━━━━━━━━━\n"
-                                f"🟡 <b>ราคาปัจจุบัน:</b> ${price:.2f}\n"
-                                f"🔔 <b>ระดับ 0.5 (เตรียมตัว):</b> ${fib_05:.2f}\n"
-                                f"🔵 <b>โซน 61.8% ถัดไป:</b> ${entry_618:.2f}\n"
-                                f"🔴 <b>ระยะอ้างอิง 78.6%:</b> ${data['sl']:.2f}\n"
-                                f"🟢 <b>เป้าสถิติ TP1 / TP2:</b> ${data['tp1']:.2f} / ${data['tp2']:.2f}"
-                            )
-                            ok, _ = send_telegram_message(chat_id, msg_05)
-                            if ok:
-                                mem["sent_05"] = True
-                                SYSTEM_STATE["last_alert_ memory"][swing_key] = mem
-
-                    # 2. เช็กการแตะระดับ 61.8% (Golden Zone)
-                    if user.get("alert_618", True) and not mem.get("sent_618"):
-                        if abs(price - entry_618) <= tolerance:
-                            msg_618 = (
-                                f"🎯 <b>[เข้าโซน] ราคาแตะ Golden Zone 61.8%</b>\n"
-                                f"📊 <b>XAUUSD ({tf.upper()})</b> • โครงสร้างฝั่ง <b>{direction}</b>\n"
-                                f"━━━━━━━━━━━━━━━━━━\n"
-                                f"🔵 <b>ระดับ 61.8%:</b> ${entry_618:.2f}\n"
-                                f"🔴 <b>ระดับ 78.6% (SL):</b> ${data['sl']:.2f}\n"
-                                f"🟢 <b>TP1 (1:2):</b> ${data['tp1']:.2f}\n"
-                                f"🟡 <b>TP2 (1:3):</b> ${data['tp2']:.2f}"
-                            )
-                            ok, _ = send_telegram_message(chat_id, msg_618)
-                            if ok:
-                                mem["sent_618"] = True
-                                SYSTEM_STATE["last_alert_ memory"][swing_key] = mem
-
-        except Exception as e:
-            print("Background Scanner Error:", e)
-        time.sleep(25)
-
-
-# เริ่มรัน Background Scanner อัตโนมัติ
-scanner_thread = threading.Thread(target=background_price_scanner, daemon=True)
-scanner_thread.start()
-
-
 # ==============================================================================
-# 4. ฟังก์ชันจัดการตารางข่าว FOREX FACTORY
+# 4. FOREX FACTORY ECONOMIC CALENDAR & MORNING BRIEFING FORMATTER
 # ==============================================================================
 def compute_countdown_and_lock(event_dt, now_dt, impact):
     diff_sec = (event_dt - now_dt).total_seconds()
@@ -296,20 +249,20 @@ def compute_countdown_and_lock(event_dt, now_dt, impact):
     is_auto_locking_now = (impact == "HIGH" and -1800 <= diff_sec <= 1800)
 
     if -1800 <= diff_sec <= 1800:
-        countdown = "🔥 กำลังประกาศข่าว! (เฝ้าระวัง ±30 นาที)"
+        countdown = "ACTIVE WINDOW (±30m)"
         urgency = "NOW"
     elif diff_sec < -1800:
-        countdown = "ประกาศผลแล้ว"
+        countdown = "COMPLETED"
         urgency = "PAST"
     else:
         hours = int(diff_sec // 3600)
         mins = int((diff_sec % 3600) // 60)
         days = int(diff_sec // 86400)
         if is_same_day:
-            countdown = f"วันนี้ • อีก {hours} ชม. {mins} นาที" if hours > 0 else f"⚠️ วันนี้ • อีก {mins} นาที!"
+            countdown = f"วันนี้ • อีก {hours}ชม. {mins}น." if hours > 0 else f"วันนี้ • อีก {mins} นาที!"
             urgency = "TODAY"
         elif is_tomorrow:
-            countdown = f"พรุ่งนี้ • เวลา {event_dt.strftime('%H:%M')} น."
+            countdown = f"พรุ่งนี้ • {event_dt.strftime('%H:%M')} น."
             urgency = "TOMORROW"
         else:
             countdown = f"อีก {days} วัน ({format_thai_date(event_dt)})"
@@ -323,12 +276,14 @@ def get_fallback_forex_factory_schedule(now_dt):
     monday = base_date + timedelta(days=1) if now_dt.weekday() == 6 else base_date - timedelta(days=now_dt.weekday())
 
     template_events = [
-        (0, 21, 0, "USD", "CB Consumer Confidence (ดัชนีความเชื่อมั่นผู้บริโภค)", "MEDIUM", "99.5", "98.7"),
-        (1, 19, 30, "USD", "Prelim GDP q/q (ตัวเลข GDP สหรัฐฯ)", "HIGH", "2.9%", "3.0%"),
+        (0, 21, 0, "USD", "CB Consumer Confidence (ความเชื่อมั่นผู้บริโภค)", "MEDIUM", "99.5", "98.7"),
+        (1, 19, 30, "USD", "Prelim GDP q/q (ผลิตภัณฑ์มวลรวมสหรัฐฯ)", "HIGH", "2.9%", "3.0%"),
+        (1, 21, 0, "USD", "JOLTS Job Openings (ตำแหน่งงานว่างเปิดใหม่)", "HIGH", "7.92M", "8.04M"),
         (2, 19, 15, "USD", "ADP Non-Farm Employment Change", "HIGH", "115K", "143K"),
-        (2, 19, 30, "USD", "Core CPI / PCE Price Index m/m (เงินเฟ้อสหรัฐฯ)", "HIGH", "0.3%", "0.2%"),
-        (3, 19, 30, "USD", "Unemployment Claims (ผู้ขอรับสวัสดิการว่างงาน)", "HIGH", "222K", "227K"),
-        (4, 19, 30, "USD", "Non-Farm Employment Change - NFP", "HIGH", "148K", "254K"),
+        (2, 19, 30, "USD", "Core PCE / CPI Price Index m/m (ดัชนีเงินเฟ้อ)", "HIGH", "0.3%", "0.2%"),
+        (3, 19, 30, "USD", "Initial Jobless Claims (ผู้ขอรับสวัสดิการว่างงาน)", "HIGH", "222K", "227K"),
+        (3, 20, 45, "USD", "Chicago PMI (ดัชนีผู้จัดการฝ่ายจัดซื้อ)", "MEDIUM", "47.1", "46.6"),
+        (4, 19, 30, "USD", "Non-Farm Employment Change (NFP)", "HIGH", "148K", "254K"),
         (4, 21, 0, "USD", "ISM Manufacturing PMI (ดัชนีภาคการผลิต)", "HIGH", "47.6", "47.2"),
     ]
 
@@ -339,13 +294,14 @@ def get_fallback_forex_factory_schedule(now_dt):
         countdown, urgency, is_locking = compute_countdown_and_lock(ev_dt, now_dt, impact)
         lock_start = (ev_dt - timedelta(minutes=30)).strftime("%H:%M")
         lock_end = (ev_dt + timedelta(minutes=30)).strftime("%H:%M")
-        rule_text = f"ล็อกอัตโนมัติ {lock_start}-{lock_end} น." if impact == "HIGH" else "ลดขนาด Lot 50%"
+        rule_text = f"Auto-Lock {lock_start}–{lock_end}" if impact == "HIGH" else "Reduce Risk 50%"
 
         results.append({
             "timestamp": int(ev_dt.timestamp()),
             "date_label": format_thai_date(ev_dt),
             "iso_date": ev_dt.strftime("%Y-%m-%d"),
             "time_label": ev_dt.strftime("%H:%M น."),
+            "lock_window": f"{lock_start} - {lock_end} น.",
             "currency": curr,
             "event": title,
             "impact": impact,
@@ -395,15 +351,16 @@ def fetch_forex_factory_calendar():
             countdown, urgency, is_locking = compute_countdown_and_lock(ev_dt, now_dt, impact_raw)
             lock_start = (ev_dt - timedelta(minutes=30)).strftime("%H:%M")
             lock_end = (ev_dt + timedelta(minutes=30)).strftime("%H:%M")
-            rule_text = f"ล็อกอัตโนมัติ {lock_start}-{lock_end} น." if impact_raw == "HIGH" else "ระวังความผันผวน"
+            rule_text = f"Auto-Lock {lock_start}–{lock_end}" if impact_raw == "HIGH" else "Reduce Risk 50%"
 
             parsed_events.append({
                 "timestamp": int(ev_dt.timestamp()),
                 "date_label": format_thai_date(ev_dt),
                 "iso_date": ev_dt.strftime("%Y-%m-%d"),
                 "time_label": ev_dt.strftime("%H:%M น."),
+                "lock_window": f"{lock_start} - {lock_end} น.",
                 "currency": "USD",
-                "event": item.get("title", "USD Event"),
+                "event": item.get("title", "USD Economic Event"),
                 "impact": impact_raw,
                 "forecast": item.get("forecast") or "-",
                 "previous": item.get("previous") or "-",
@@ -421,8 +378,220 @@ def fetch_forex_factory_calendar():
     return all_events
 
 
+def build_morning_news_brief_message(now_dt, calendar_events, start_t, end_t):
+    today_iso = now_dt.strftime("%Y-%m-%d")
+    today_high = [ev for ev in calendar_events if ev.get("iso_date") == today_iso and ev.get("impact") == "HIGH"]
+    today_med = [ev for ev in calendar_events if ev.get("iso_date") == today_iso and ev.get("impact") == "MEDIUM"]
+
+    lines = [
+        f"🌅 <b>GOLD AI SNIPER PRO — MORNING BRIEFING</b>",
+        f"📅 <b>ประจำวัน:</b> {format_thai_date(now_dt)}",
+        f"⏰ <b>รอบเวลาสแกนของคุณ:</b> {start_t} – {end_t} น.",
+        f"━━━━━━━━━━━━━━━━━━━━━━"
+    ]
+
+    if today_high:
+        lines.append("🔴 <b>ข่าวแดง (HIGH IMPACT USD) ที่ต้องระวังวันนี้:</b>")
+        for ev in today_high:
+            lines.append(f"• <b>{ev['time_label']}</b> — {ev['event']}")
+            lines.append(f"  └ 🛡️ <i>ล็อกสัญญาณอัตโนมัติ: {ev['lock_window']} (คาดการณ์: {ev['forecast']})</i>")
+    else:
+        lines.append("🟢 <b>ข่าวแดง (HIGH IMPACT USD):</b>")
+        lines.append("• วันนี้ไม่มีตารางประกาศข่าวแดงสหรัฐฯ ตลาดเคลื่อนไหวตามโครงสร้างเทคนิคปกติ")
+
+    if today_med:
+        lines.append("")
+        lines.append("🟠 <b>ข่าวส้ม (MEDIUM IMPACT) เพิ่มเติม:</b>")
+        for ev in today_med[:4]:
+            lines.append(f"• {ev['time_label']} — {ev['event']}")
+
+    lines.extend([
+        f"━━━━━━━━━━━━━━━━━━━━━━",
+        f"📐 <b>ระบบเฝ้าระวังอัตโนมัติทำงานอยู่:</b>",
+        f"1. แจ้งเตือนเมื่อตลาดเข้าโหมด <b>Sideway (&lt; ${SIDEWAY_THRESHOLD_DOLLAR:.2f})</b>",
+        f"2. แจ้งเตือนล่วงหน้าที่ระดับ <b>Fibonacci 0.5 (50.0%)</b>",
+        f"3. แจ้งเตือนเมื่อราคาเข้าโซน <b>Golden Zone 61.8%</b>"
+    ])
+    return "\n".join(lines)
+
+
 # ==============================================================================
-# 5. FRONTEND HTML TEMPLATE (CLEAN UI + TELEGRAM BOT + 0.5 ALERT + LOGIN MVP)
+# 5. 24/7 AUTONOMOUS BACKGROUND SCANNER THREAD
+# ==============================================================================
+def is_within_schedule(now_dt, start_str, end_str):
+    try:
+        cur_mins = now_dt.hour * 60 + now_dt.minute
+        sh, sm = map(int, start_str.split(":"))
+        eh, em = map(int, end_str.split(":"))
+        start_mins = sh * 60 + sm
+        end_mins = eh * 60 + em
+        if start_mins <= end_mins:
+            return start_mins <= cur_mins <= end_mins
+        return cur_mins >= start_mins or cur_mins <= end_mins
+    except Exception:
+        return True
+
+
+def background_price_scanner():
+    """รันหลังบ้านตลอด 24 ชม. ตรวจจับข่าวเช้า, ตลาด Sideway, และระดับ Fibonacci 0.5 / 61.8%"""
+    while True:
+        try:
+            now_dt = datetime.now(TH_TZ)
+            SYSTEM_STATE["scanner_last_run"] = now_dt.strftime("%H:%M:%S")
+            calendar_events = fetch_forex_factory_calendar()
+            auto_locking = any(ev.get("is_locking_now") for ev in calendar_events)
+            is_locked = SYSTEM_STATE["manual_news_lock"] or auto_locking
+
+            if USERS_DB:
+                active_tfs = set()
+                for u in USERS_DB.values():
+                    if u.get("chat_id") and u.get("auto_alert", True):
+                        active_tfs.add(u.get("preferred_tf", "5m").lower())
+
+                tf_data_cache = {}
+                for tf in active_tfs:
+                    try:
+                        tf_data_cache[tf] = fetch_server_gold_candles(tf)
+                    except Exception:
+                        pass
+
+                today_str = now_dt.strftime("%Y-%m-%d")
+
+                for email, user in list(USERS_DB.items()):
+                    chat_id = user.get("chat_id")
+                    if not chat_id or not user.get("auto_alert", True):
+                        continue
+
+                    start_t = user.get("start_time", "08:00")
+                    end_t = user.get("end_time", "22:00")
+
+                    if not is_within_schedule(now_dt, start_t, end_t):
+                        continue
+
+                    # ----------------------------------------------------------
+                    # FEATURE B: ส่งสรุปข่าวเช้าอัตโนมัติ (แจ้งเตือนแรกของวันเมื่อเข้าช่วงเวลา)
+                    # ----------------------------------------------------------
+                    brief_key = f"{chat_id}_{today_str}"
+                    if user.get("alert_morning_news", True) and not SYSTEM_STATE["morning_brief_memory"].get(brief_key):
+                        morning_msg = build_morning_news_brief_message(now_dt, calendar_events, start_t, end_t)
+                        ok, _ = send_telegram_message(chat_id, morning_msg)
+                        if ok:
+                            SYSTEM_STATE["morning_brief_memory"][brief_key] = True
+
+                    if is_locked:
+                        continue
+
+                    tf = user.get("preferred_tf", "5m").lower()
+                    data = tf_data_cache.get(tf)
+                    if not data:
+                        continue
+
+                    price = data["current_price"]
+                    fib_05 = data["fib_05"]
+                    entry_618 = data["entry"]
+                    direction = data["direction"]
+                    rng = data["range"]
+                    tolerance = max(0.45, rng * 0.035)
+
+                    swing_key = f"{chat_id}_{tf}_{data['swing_high']}_{data['swing_low']}"
+                    mem = SYSTEM_STATE["last_alert_memory"].get(swing_key, {})
+
+                    # ----------------------------------------------------------
+                    # FEATURE A: ตรวจจับตลาด SIDEWAY (< $8.00)
+                    # ----------------------------------------------------------
+                    if data["is_sideway"]:
+                        if user.get("alert_sideway", True) and not mem.get("sent_sideway"):
+                            side_msg = (
+                                f"⚠️ <b>[SIDEWAY REGIME DETECTED] ตลาดไร้ทิศทาง</b>\n"
+                                f"📊 <b>XAUUSD ({tf.upper()})</b> • กรอบสวิงแคบเพียง <b>${rng:.2f}</b> (&lt; ${SIDEWAY_THRESHOLD_DOLLAR:.2f})\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                                f"⬆️ <b>Swing High:</b> ${data['swing_high']:.2f}\n"
+                                f"⬇️ <b>Swing Low:</b> ${data['swing_low']:.2f}\n"
+                                f"🛡️ <b>คำแนะนำทางสถิติ:</b> ราคากำลังบีบอัดออกข้าง (Low Volatility) ควรชะลอการเทรดหรือลดขนาด Lot ลง 50% เพื่อป้องกันการโดนกวาด Stop Loss"
+                            )
+                            ok, _ = send_telegram_message(chat_id, side_msg)
+                            if ok:
+                                mem["sent_sideway"] = True
+                                SYSTEM_STATE["last_alert_memory"][swing_key] = mem
+                        # เมื่อตลาดเป็น Sideway จะระงับการส่งสัญญาณ Fibo ชั่วคราวเพื่อความปลอดภัยสูงสุด
+                        continue
+
+                    # ----------------------------------------------------------
+                    # FEATURE C (STAGE 1): แจ้งเตือนล่วงหน้าที่ระดับ 0.5 (50.0%)
+                    # ----------------------------------------------------------
+                    if user.get("alert_05", True) and not mem.get("sent_05"):
+                        if abs(price - fib_05) <= tolerance:
+                            msg_05 = (
+                                f"🔔 <b>[STAGE 1: PREPARE] ราคาแตะระดับ 0.5 (50.0%)</b>\n"
+                                f"📊 <b>XAUUSD ({tf.upper()})</b> • โครงสร้างฝั่ง <b>{direction}</b>\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                                f"🟡 <b>ราคาปัจจุบัน:</b> ${price:.2f}\n"
+                                f"🔔 <b>จุดเตรียมตัว 0.5:</b> ${fib_05:.2f}\n"
+                                f"🔵 <b>โซนหลัก 61.8% ถัดไป:</b> ${entry_618:.2f}\n"
+                                f"🔴 <b>ระดับอ้างอิง 78.6%:</b> ${data['sl']:.2f}\n"
+                                f"🟢 <b>เป้าสถิติ TP1 / TP2:</b> ${data['tp1']:.2f} / ${data['tp2']:.2f}"
+                            )
+                            ok, _ = send_telegram_message(chat_id, msg_05)
+                            if ok:
+                                mem["sent_05"] = True
+                                SYSTEM_STATE["last_alert_memory"][swing_key] = mem
+
+                    # ----------------------------------------------------------
+                    # FEATURE C (STAGE 2): แจ้งเตือนเมื่อเข้า GOLDEN ZONE 61.8%
+                    # ----------------------------------------------------------
+                    if user.get("alert_618", True) and not mem.get("sent_618"):
+                        if abs(price - entry_618) <= tolerance:
+                            calc_user = calculate_fib_levels(
+                                direction,
+                                data["swing_high"],
+                                data["swing_low"],
+                                user.get("balance", 1000.0),
+                                user.get("risk_pct", 1.5)
+                            )
+                            msg_618 = (
+                                f"🎯 <b>[STAGE 2: GOLDEN ZONE] ราคาเข้าโซน 61.8%</b>\n"
+                                f"📊 <b>XAUUSD ({tf.upper()})</b> • โครงสร้างฝั่ง <b>{direction}</b>\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                                f"🔵 <b>Golden Zone (61.8%):</b> ${entry_618:.2f}\n"
+                                f"🔴 <b>Invalidation (78.6%):</b> ${data['sl']:.2f} (ระยะ ${data['risk']:.2f})\n"
+                                f"🟢 <b>Target 1 (RR 1:2):</b> ${data['tp1']:.2f}\n"
+                                f"🟡 <b>Target 2 (RR 1:3):</b> ${data['tp2']:.2f}\n"
+                                f"⚖️ <b>ขนาด Lot คำนวณตามความเสี่ยง:</b> {calc_user['recommended_lot']} Lot"
+                            )
+                            ok, _ = send_telegram_message(chat_id, msg_618)
+                            if ok:
+                                mem["sent_618"] = True
+                                SYSTEM_STATE["last_alert_memory"][swing_key] = mem
+                                SYSTEM_STATE["signal_history"].insert(0, {
+                                    "id": len(SYSTEM_STATE["signal_history"]) + 101,
+                                    "date": format_thai_date(now_dt),
+                                    "time": now_dt.strftime("%H:%M:%S"),
+                                    "symbol": "XAUUSD",
+                                    "tf": tf.upper(),
+                                    "direction": direction,
+                                    "regime": "TRENDING",
+                                    "range": f"{rng:.2f}",
+                                    "fib_05": f"{fib_05:.2f}",
+                                    "entry": f"{entry_618:.2f}",
+                                    "sl": f"{data['sl']:.2f}",
+                                    "tp1": f"{data['tp1']:.2f}",
+                                    "tp2": f"{data['tp2']:.2f}",
+                                    "rr": "1:3",
+                                    "status": "AUTO 61.8% SENT",
+                                    "reason": f"Auto-Scanner triggered at 61.8% Golden Zone (${entry_618:.2f})"
+                                })
+
+        except Exception as e:
+            print("Background Scanner Error:", e)
+        time.sleep(25)
+
+
+scanner_thread = threading.Thread(target=background_price_scanner, daemon=True)
+scanner_thread.start()
+
+
+# ==============================================================================
+# 6. 5-STAR INSTITUTIONAL TERMINAL FRONTEND (OBSIDIAN PRECISION UI)
 # ==============================================================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -430,452 +599,567 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GOLD AI SNIPER PRO — Auto Fibonacci Calculator & Telegram Alert</title>
+    <title>GOLD AI SNIPER PRO — Institutional XAUUSD Fibonacci & Regime Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-deep: #03060c;
-            --bg-card: rgba(13, 20, 36, 0.88);
-            --border-subtle: rgba(255, 255, 255, 0.08);
+            --bg-canvas: #06080E;
+            --bg-surface: #0B0F17;
+            --bg-elevated: #111726;
+            --border-hairline: rgba(255, 255, 255, 0.07);
+            --border-focus: rgba(212, 175, 55, 0.45);
+            --gold-accent: #D4AF37;
+            --amber-warn: #F59E0B;
+            --emerald-bull: #10B981;
+            --crimson-bear: #F43F5E;
         }
+        * { box-sizing: border-box; }
         body {
-            font-family: 'Prompt', sans-serif;
-            background-color: var(--bg-deep);
+            font-family: 'Inter', 'Prompt', sans-serif;
+            background-color: var(--bg-canvas);
             background-image: 
-                radial-gradient(circle at 10% 5%, rgba(245, 158, 11, 0.08), transparent 35%),
-                radial-gradient(circle at 90% 10%, rgba(6, 182, 212, 0.08), transparent 35%);
-            color: #f1f5f9;
+                radial-gradient(circle at 15% 0%, rgba(212, 175, 55, 0.05), transparent 40%),
+                radial-gradient(circle at 85% 0%, rgba(16, 185, 129, 0.04), transparent 40%);
+            color: #E2E8F0;
             overflow-x: hidden;
+            margin: 0;
         }
-        .font-mono-num { font-family: 'JetBrains Mono', monospace; }
-        .pro-card {
-            background: var(--bg-card);
-            backdrop-filter: blur(16px);
-            border: 1px solid var(--border-subtle);
-            box-shadow: 0 18px 40px -15px rgba(0, 0, 0, 0.7);
+        .font-mono-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
         }
-        .pro-card-gold {
-            background: linear-gradient(145deg, rgba(18, 27, 48, 0.95), rgba(9, 14, 26, 0.98));
-            border: 1px solid rgba(245, 158, 11, 0.4);
+        .inst-panel {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-hairline);
+            box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.85);
         }
-        .btn-interactive {
-            transition: all 0.2s ease;
+        .inst-panel-gold {
+            background: linear-gradient(180deg, rgba(17, 23, 38, 0.9) 0%, rgba(11, 15, 23, 0.98) 100%);
+            border: 1px solid rgba(212, 175, 55, 0.28);
+            box-shadow: 0 14px 36px -12px rgba(0, 0, 0, 0.9);
         }
-        .btn-interactive:hover:not(:disabled) {
-            transform: translateY(-2px);
+        .inst-card-interactive {
+            background-color: var(--bg-elevated);
+            border: 1px solid var(--border-hairline);
+            transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .btn-interactive:active:not(:disabled) {
+        .inst-card-interactive:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+        .inst-card-interactive:active {
+            transform: translateY(0px) scale(0.99);
+        }
+        .inst-btn {
+            transition: all 0.15s ease;
+        }
+        .inst-btn:hover:not(:disabled) {
+            filter: brightness(1.08);
+            transform: translateY(-1px);
+        }
+        .inst-btn:active:not(:disabled) {
             transform: translateY(0px) scale(0.98);
         }
-        .price-box {
-            transition: all 0.2s ease;
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 9999px;
+            display: inline-block;
         }
-        .price-box:hover {
-            transform: translateY(-2px);
-            border-color: rgba(255,255,255,0.3);
-        }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #03060c; }
-        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 9999px; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #06080E; }
+        ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #D4AF37; }
     </style>
 </head>
-<body class="antialiased min-h-screen p-3 md:p-5">
+<body class="antialiased min-h-screen flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950">
 
     <!-- ==================================================================== -->
-    <!-- MODAL 1: หน้าเข้าสู่ระบบด้วย Email + กดยอมรับเงื่อนไข (Disclaimer)   -->
+    <!-- MODAL 1: INSTITUTIONAL ACCESS & LEGAL DISCLAIMER                     -->
     <!-- ==================================================================== -->
-    <div id="auth-modal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
-        <div class="pro-card pro-card-gold rounded-2xl max-w-md w-full p-6 space-y-5 border border-amber-500/40">
-            <div class="flex items-center gap-3">
-                <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-yellow-600 flex items-center justify-center text-slate-950 font-black text-xl shadow-lg">
-                    XAU
+    <div id="auth-modal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="inst-panel-gold rounded-xl max-w-md w-full p-6 space-y-5">
+            <div class="flex items-center justify-between border-b border-white/10 pb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-400 font-mono-num font-extrabold text-sm">
+                        XAU
+                    </div>
+                    <div>
+                        <h2 class="text-sm font-bold tracking-wide text-white uppercase">GOLD AI SNIPER PRO</h2>
+                        <p class="text-[11px] text-slate-400">Institutional Fibonacci & Market Regime Terminal</p>
+                    </div>
                 </div>
-                <div>
-                    <h2 class="text-lg font-black text-white">เข้าสู่ระบบ GOLD AI SNIPER PRO</h2>
-                    <p class="text-xs text-amber-300">ระบบคำนวณกรอบราคา Fibonacci & แจ้งเตือน Telegram</p>
-                </div>
+                <span class="px-2 py-0.5 text-[10px] font-mono-num font-semibold bg-white/5 text-slate-300 rounded border border-white/10">v5.0 PRO</span>
             </div>
 
-            <div class="space-y-3 text-xs">
+            <div class="space-y-4 text-xs">
                 <div>
-                    <label class="text-slate-300 font-bold block mb-1">อีเมลผู้ใช้งาน (Email Address)</label>
-                    <input type="email" id="login-email" placeholder="example@gmail.com" class="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 rounded-xl p-3 text-white outline-none font-mono-num">
+                    <label class="text-slate-300 font-semibold block mb-1.5">อีเมลผู้ใช้งาน (Institutional / Personal Email)</label>
+                    <input type="email" id="login-email" placeholder="name@domain.com" class="w-full bg-[#06080E] border border-white/15 focus:border-amber-400 rounded-lg px-3.5 py-2.5 text-white outline-none font-mono-num text-xs">
                 </div>
 
-                <div class="bg-slate-950/90 p-3.5 rounded-xl border border-slate-800 space-y-2 text-[11px] text-slate-300 leading-relaxed">
-                    <div class="font-bold text-amber-400 flex items-center gap-1.5">
-                        <i class="fa-solid fa-scale-balanced"></i> ข้อตกลงการใช้งานเครื่องมือทางคณิตศาสตร์ (Disclaimer)
+                <div class="bg-[#06080E] p-3.5 rounded-lg border border-white/10 space-y-2 text-[11px] text-slate-300 leading-relaxed">
+                    <div class="font-bold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider text-[10px]">
+                        <i class="fa-solid fa-shield-halved"></i> ข้อตกลงการใช้งานเครื่องมือคำนวณทางสถิติ (Legal Disclaimer)
                     </div>
-                    <p>
-                        เว็บแอปพลิเคชันนี้เป็นเพียง <strong>เครื่องมือช่วยคำนวณตัวเลขทางคณิตศาสตร์ (Fibonacci Retracement) และแสดงข้อมูลทางสถิติอัตโนมัติเท่านั้น</strong> มิใช่การให้คำแนะนำทางการเงินหรือการชักชวนลงทุน (Not Financial Advice) ผู้ใช้งานเป็นผู้ตัดสินใจและรับความเสี่ยงด้วยตนเอง 100%
+                    <p class="text-slate-400">
+                        แพลตฟอร์มนี้เป็น <strong>เครื่องมือคำนวณระดับราคาทางคณิตศาสตร์ (Fibonacci Retracement) และตรวจจับความผันผวนทางสถิติอัตโนมัติเท่านั้น</strong> ไม่ใช่การให้คำแนะนำทางการเงินหรือการชักชวนลงทุน (Not Financial Advice) ผู้ใช้งานเป็นผู้รับผิดชอบการตัดสินใจด้วยตนเอง 100%
                     </p>
-                    <label class="flex items-start gap-2 pt-1 cursor-pointer select-none text-white font-semibold">
-                        <input type="checkbox" id="login-disclaimer" class="mt-0.5 rounded accent-amber-500 w-4 h-4">
-                        <span>ฉันอ่านและยอมรับว่านี่คือเครื่องมือคำนวณทางสถิติเท่านั้น</span>
+                    <label class="flex items-start gap-2.5 pt-1.5 cursor-pointer select-none text-slate-100 font-medium">
+                        <input type="checkbox" id="login-disclaimer" class="mt-0.5 rounded accent-amber-500 w-3.5 h-3.5">
+                        <span>ฉันรับทราบและยอมรับข้อตกลงการใช้งานเครื่องมือคำนวณทางเทคนิค</span>
                     </label>
                 </div>
             </div>
 
-            <button onclick="submitEmailLogin()" class="btn-interactive w-full py-3 rounded-xl bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-black text-sm shadow-lg">
-                เข้าสู่ระบบและใช้งานเครื่องมือ
+            <button onclick="submitEmailLogin()" class="inst-btn w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs tracking-wide uppercase">
+                เข้าสู่ระบบเทอร์มินัล (Initialize Terminal)
             </button>
         </div>
     </div>
 
     <!-- ==================================================================== -->
-    <!-- MODAL 2: ตั้งค่าเชื่อมต่อ TELEGRAM BOT & เวลาแจ้งเตือนส่วนตัว          -->
+    <!-- MODAL 2: TELEGRAM 24/7 DISPATCH & MORNING BRIEF CONFIGURATION        -->
     <!-- ==================================================================== -->
-    <div id="settings-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
-        <div class="pro-card rounded-2xl max-w-lg w-full p-6 space-y-4 border border-cyan-500/40 max-h-[92vh] overflow-y-auto">
-            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-                <div class="flex items-center gap-2.5">
-                    <i class="fa-brands fa-telegram text-2xl text-cyan-400"></i>
+    <div id="settings-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="inst-panel rounded-xl max-w-xl w-full p-6 space-y-5 max-h-[92vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-white/10 pb-3.5">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 text-base">
+                        <i class="fa-brands fa-telegram"></i>
+                    </div>
                     <div>
-                        <h3 class="text-base font-black text-white">ตั้งค่าแจ้งเตือน Telegram Bot 24 ชม.</h3>
-                        <p class="text-[11px] text-slate-400">ส่งตรงเข้ามือถือโดยไม่ต้องเปิดหน้าเว็บค้างไว้</p>
+                        <h3 class="text-sm font-bold text-white uppercase tracking-wide">Telegram 24/7 Autonomous Dispatch</h3>
+                        <p class="text-[11px] text-slate-400">ตั้งค่าการส่งสรุปข่าวเช้า, เตือนตลาด Sideway และจุด Fibonacci เข้ามือถือ</p>
                     </div>
                 </div>
-                <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-white text-lg px-2">
+                <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-white text-sm px-2 py-1 rounded hover:bg-white/5">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
 
-            <!-- ขั้นตอนที่ 1: กด /start บอท -->
-            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2.5 text-xs">
-                <div class="font-bold text-cyan-300">STEP 1: กดปุ่ม Start ในแอป Telegram ก่อน</div>
-                <p class="text-slate-400 text-[11px]">คลิกลิงก์ด้านล่างเพื่อเปิดบอท <strong>@gold_ai_sniper_pro_bot</strong> แล้วกดปุ่ม <strong>Start (/start)</strong> 1 ครั้ง</p>
+            <!-- STEP 1: BOT CONNECTION -->
+            <div class="bg-[#06080E] p-4 rounded-lg border border-white/10 space-y-2.5 text-xs">
+                <div class="flex items-center justify-between">
+                    <span class="font-bold text-amber-400 uppercase tracking-wider text-[10px]">STEP 1 • เชื่อมต่อบอท @gold_ai_sniper_pro_bot</span>
+                    <span class="text-[10px] font-mono-num text-emerald-400">BOT ONLINE</span>
+                </div>
+                <p class="text-slate-400 text-[11px]">กดเปิดบอทในแอป Telegram แล้วพิมพ์ <code class="text-white bg-white/10 px-1.5 py-0.5 rounded">/start</code> 1 ครั้ง จากนั้นกดปุ่มดึงเลข Chat ID อัตโนมัติ</p>
                 <div class="flex flex-wrap gap-2 pt-1">
-                    <a href="https://t.me/gold_ai_sniper_pro_bot" target="_blank" class="btn-interactive px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold inline-flex items-center gap-1.5">
-                        <i class="fa-brands fa-telegram text-sm"></i> 1. เปิดบอท @gold_ai_sniper_pro_bot
+                    <a href="https://t.me/gold_ai_sniper_pro_bot" target="_blank" class="inst-btn px-3 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs inline-flex items-center gap-1.5">
+                        <i class="fa-brands fa-telegram"></i> 1. เปิดบอทใน Telegram
                     </a>
-                    <button onclick="autoDetectTelegramChatId()" class="btn-interactive px-3.5 py-2 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 font-bold inline-flex items-center gap-1.5">
+                    <button onclick="autoDetectTelegramChatId()" class="inst-btn px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 font-semibold text-xs inline-flex items-center gap-1.5">
                         <i class="fa-solid fa-wand-magic-sparkles"></i> 2. ดึงเลข Chat ID อัตโนมัติ
                     </button>
                 </div>
             </div>
 
-            <!-- ขั้นตอนที่ 2: กรอก Chat ID และเลือก Timeframe -->
-            <div class="space-y-3 text-xs">
+            <!-- STEP 2: CHAT ID & SCHEDULE -->
+            <div class="space-y-3.5 text-xs">
                 <div>
-                    <label class="text-slate-300 font-bold block mb-1">Telegram Chat ID ของคุณ</label>
-                    <div class="flex gap-2">
-                        <input type="text" id="set-chat-id" placeholder="เช่น 123456789 (กดปุ่มดึงอัตโนมัติด้านบนได้)" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-mono-num">
-                        <button onclick="sendTestTelegram()" class="btn-interactive px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 font-bold shrink-0">
-                            ทดสอบส่ง
+                    <label class="text-slate-300 font-semibold block mb-1">Telegram Chat ID ของคุณ</label>
+                    <div class="flex flex-wrap sm:flex-nowrap gap-2">
+                        <input type="text" id="set-chat-id" value="8948986514" placeholder="เช่น 8948986514" class="w-full bg-[#06080E] border border-white/15 focus:border-amber-400 rounded-lg px-3 py-2 text-white font-mono-num text-xs outline-none">
+                        <button onclick="sendTestTelegram()" class="inst-btn px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-200 border border-white/15 font-semibold shrink-0">
+                            <i class="fa-regular fa-paper-plane mr-1 text-sky-400"></i> ทดสอบส่งข้อความ
+                        </button>
+                        <button onclick="sendMorningBriefNow()" class="inst-btn px-3 py-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-semibold shrink-0">
+                            <i class="fa-solid fa-sun mr-1"></i> ส่งสรุปข่าวเช้าเดี๋ยวนี้
                         </button>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     <div>
-                        <label class="text-slate-400 block mb-1 text-[11px]">Timeframe ที่เฝ้าสแกน</label>
-                        <select id="set-tf" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-bold">
-                            <option value="1m">1 นาที (M1)</option>
-                            <option value="5m" selected>5 นาที (M5 - แนะนำ)</option>
-                            <option value="15m">15 นาที (M15)</option>
-                            <option value="1h">1 ชั่วโมง (H1)</option>
-                            <option value="4h">4 ชั่วโมง (H4)</option>
+                        <label class="text-slate-400 block mb-1 text-[11px]">Timeframe หลักที่ให้บอทเฝ้า</label>
+                        <select id="set-tf" class="w-full bg-[#06080E] border border-white/15 rounded-lg p-2 text-white font-mono-num font-semibold text-xs">
+                            <option value="1m">1M (Scalping)</option>
+                            <option value="5m" selected>5M (Sniper Default)</option>
+                            <option value="15m">15M (Intraday)</option>
+                            <option value="1h">1H (Swing)</option>
+                            <option value="4h">4H (Position)</option>
                         </select>
                     </div>
                     <div>
-                        <label class="text-slate-400 block mb-1 text-[11px]">เวลาเริ่มแจ้งเตือน</label>
-                        <input type="time" id="set-start-time" value="08:00" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-mono-num">
+                        <label class="text-slate-400 block mb-1 text-[11px]">เวลาเริ่ม (ส่งสรุปข่าวเช้าทันที)</label>
+                        <input type="time" id="set-start-time" value="08:00" class="w-full bg-[#06080E] border border-white/15 rounded-lg p-2 text-white font-mono-num text-xs">
                     </div>
                     <div>
-                        <label class="text-slate-400 block mb-1 text-[11px]">เวลาหยุดแจ้งเตือน</label>
-                        <input type="time" id="set-end-time" value="23:59" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-mono-num">
+                        <label class="text-slate-400 block mb-1 text-[11px]">เวลาหยุดแจ้งเตือนของวัน</label>
+                        <input type="time" id="set-end-time" value="22:00" class="w-full bg-[#06080E] border border-white/15 rounded-lg p-2 text-white font-mono-num text-xs">
                     </div>
                 </div>
 
-                <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
-                    <div class="font-bold text-amber-400 text-[11px]">เงื่อนไขจุดแจ้งเตือนอัตโนมัติ (เลือกได้ทั้งคู่)</div>
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="set-alert-05" checked class="accent-amber-500 w-4 h-4">
-                        <span>🔔 <strong>เตือนล่วงหน้าเมื่อแตะระดับ 0.5 (Fib 50.0%)</strong> เพื่อเตรียมตัว</span>
+                <!-- STEP 3: ALERT TRIGGERS -->
+                <div class="bg-[#06080E] p-3.5 rounded-lg border border-white/10 space-y-2">
+                    <div class="font-bold text-slate-300 text-[10px] uppercase tracking-wider">เงื่อนไขการยิงแจ้งเตือนอัตโนมัติ (24/7 Background Rules)</div>
+                    <label class="flex items-center gap-2.5 cursor-pointer text-slate-200">
+                        <input type="checkbox" id="set-alert-morning" checked class="accent-amber-500 w-3.5 h-3.5">
+                        <span>🌅 <strong>Morning News Briefing:</strong> ส่งสรุปตารางข่าวแดงของวันทันทีเมื่อถึงเวลาเริ่ม (เช่น 08:00 น.)</span>
                     </label>
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="set-alert-618" checked class="accent-cyan-500 w-4 h-4">
-                        <span>🎯 <strong>เตือนเมื่อราคาเข้า Golden Zone 61.8%</strong> พร้อมกรอบ SL/TP</span>
+                    <label class="flex items-center gap-2.5 cursor-pointer text-slate-200">
+                        <input type="checkbox" id="set-alert-sideway" checked class="accent-amber-500 w-3.5 h-3.5">
+                        <span>⚠️ <strong>Sideway Regime Warning:</strong> เตือนทันทีเมื่อกรอบสวิงแคบกว่า $8.00 (ตลาดออกข้างไร้ทิศทาง)</span>
+                    </label>
+                    <label class="flex items-center gap-2.5 cursor-pointer text-slate-200">
+                        <input type="checkbox" id="set-alert-05" checked class="accent-amber-500 w-3.5 h-3.5">
+                        <span>🔔 <strong>Stage 1 — Early Warning (0.5):</strong> เตือนล่วงหน้าเมื่อราคาแตะ Fibonacci 50.0% เพื่อเตรียมตัว</span>
+                    </label>
+                    <label class="flex items-center gap-2.5 cursor-pointer text-slate-200">
+                        <input type="checkbox" id="set-alert-618" checked class="accent-amber-500 w-3.5 h-3.5">
+                        <span>🎯 <strong>Stage 2 — Golden Zone (61.8%):</strong> เตือนเมื่อราคาเข้าโซน 61.8% พร้อม SL 78.6% และขนาด Lot</span>
                     </label>
                 </div>
             </div>
 
-            <div class="flex justify-end gap-2 pt-2">
-                <button onclick="toggleSettingsModal()" class="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">ปิด</button>
-                <button onclick="saveUserSettings()" class="btn-interactive px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-emerald-400 text-slate-950 font-black text-xs">
-                    <i class="fa-solid fa-floppy-disk mr-1"></i> บันทึกการตั้งค่าทั้งหมด
+            <div class="flex justify-end gap-2 pt-2 border-t border-white/10">
+                <button onclick="toggleSettingsModal()" class="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold">ปิดหน้าต่าง</button>
+                <button onclick="saveUserSettings()" class="inst-btn px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs">
+                    บันทึกและเปิดสแกน 24 ชม.
                 </button>
             </div>
         </div>
     </div>
 
-    <div class="max-w-[1680px] mx-auto space-y-4">
-
-        <!-- ================================================================ -->
-        <!-- 1. CLEAN TOP HEADER BAR                                          -->
-        <!-- ================================================================ -->
-        <header class="pro-card rounded-2xl p-4 lg:px-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-            <div class="flex items-center gap-3.5">
-                <div class="px-3.5 py-2 rounded-2xl bg-gradient-to-br from-amber-300 via-amber-500 to-yellow-600 flex flex-col items-center justify-center shadow-lg font-black text-slate-950">
-                    <span class="text-[9px] tracking-tighter leading-none">SNIPER</span>
-                    <span class="text-base tracking-tight leading-none font-mono-num">XAU</span>
-                </div>
-                <div>
-                    <div class="flex flex-wrap items-center gap-2">
-                        <h1 class="text-lg md:text-xl font-black tracking-tight text-white">GOLD AI SNIPER PRO</h1>
-                        <span class="px-2 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-full">
-                            AUTO FIB 0.5 & 61.8%
-                        </span>
+    <!-- ==================================================================== -->
+    <!-- TOP INSTITUTIONAL COMMAND BAR                                        -->
+    <!-- ==================================================================== -->
+    <header class="inst-panel border-b border-white/10 px-4 py-2.5 sticky top-0 z-30 backdrop-blur-md bg-[#0B0F17]/95">
+        <div class="max-w-[1760px] mx-auto flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
+            
+            <!-- Brand & System Telemetry -->
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded bg-amber-500 flex items-center justify-center text-slate-950 font-mono-num font-black text-xs tracking-tighter">
+                        XAU
                     </div>
-                    <p class="text-[11px] text-slate-400">เครื่องมือคำนวณกรอบราคาทางเทคนิคอัตโนมัติ & แจ้งเตือนผ่าน Telegram</p>
-                </div>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-2.5 w-full lg:w-auto justify-between lg:justify-end">
-                <!-- ราคาทองคำสด -->
-                <div class="bg-slate-950 px-3.5 py-1.5 rounded-xl border border-slate-800 flex items-center gap-2.5">
                     <div>
-                        <span class="block text-[9px] text-slate-400 font-bold uppercase">XAUUSD LIVE</span>
-                        <span id="live-ticker-price" class="font-mono-num text-sm font-black text-emerald-400">--</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-extrabold tracking-tight text-white">GOLD AI SNIPER</span>
+                            <span class="text-[10px] font-mono-num font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">TERMINAL</span>
+                        </div>
+                        <span class="block text-[10px] text-slate-400">Quantitative Fibonacci & Market Regime Engine</span>
                     </div>
-                    <span id="proximity-pill" class="px-2 py-0.5 text-[10px] font-bold rounded bg-slate-800 text-slate-300">รอคำนวณ...</span>
                 </div>
 
-                <!-- ป้องกันข่าวแรง -->
-                <div id="news-shield-box" class="bg-emerald-950/40 border border-emerald-500/40 px-3 py-1.5 rounded-xl flex items-center gap-2">
-                    <span id="shield-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                    <span id="shield-status-text" class="text-[11px] font-bold text-emerald-400">ตลาดปกติ</span>
-                    <button onclick="toggleNewsLock()" class="text-[10px] bg-slate-900 hover:bg-slate-800 px-2 py-0.5 rounded border border-slate-700 text-slate-300">สลับโหมด</button>
+                <div class="h-5 w-[1px] bg-white/10 hidden sm:block"></div>
+
+                <!-- Market Regime Pill (Trending vs Sideway) -->
+                <div id="top-regime-pill" class="px-2.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2 text-xs">
+                    <span id="top-regime-dot" class="status-dot bg-emerald-400"></span>
+                    <span id="top-regime-text" class="font-mono-num font-bold text-emerald-400 text-[11px]">REGIME: TRENDING</span>
                 </div>
 
-                <!-- ปุ่มตั้งค่า Telegram & บัญชีผู้ใช้ -->
-                <button onclick="toggleSettingsModal()" class="btn-interactive px-3.5 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 text-xs font-extrabold flex items-center gap-1.5">
-                    <i class="fa-brands fa-telegram text-sm"></i>
-                    <span id="telegram-status-btn">ตั้งค่า Telegram</span>
+                <!-- Forex Factory Shield Pill -->
+                <div id="news-shield-box" class="px-2.5 py-1 rounded bg-white/5 border border-white/10 flex items-center gap-2 text-xs">
+                    <span id="shield-dot" class="status-dot bg-emerald-400"></span>
+                    <span id="shield-status-text" class="text-[11px] font-medium text-slate-300">News Shield: Standby</span>
+                    <button onclick="toggleNewsLock()" class="text-[10px] font-mono-num px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-slate-400 border border-white/10">Test Lock</button>
+                </div>
+            </div>
+
+            <!-- Right Telemetry: Live Spot, Telegram & Profile -->
+            <div class="flex flex-wrap items-center gap-2.5 w-full lg:w-auto justify-between lg:justify-end">
+                <!-- Live XAUUSD Price -->
+                <div class="bg-[#06080E] px-3 py-1 rounded border border-white/10 flex items-center gap-3">
+                    <div>
+                        <span class="text-[9px] font-mono-num uppercase text-slate-400 block">XAUUSD SPOT</span>
+                        <span id="live-ticker-price" class="font-mono-num text-sm font-extrabold text-white">--</span>
+                    </div>
+                    <span id="proximity-pill" class="px-2 py-0.5 text-[10px] font-mono-num font-semibold rounded bg-white/5 text-slate-300 border border-white/10">SCANNING</span>
+                </div>
+
+                <!-- Telegram Configuration Button -->
+                <button onclick="toggleSettingsModal()" class="inst-btn px-3 py-1.5 rounded bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-300 text-xs font-semibold flex items-center gap-1.5">
+                    <i class="fa-brands fa-telegram"></i>
+                    <span id="telegram-status-btn">Telegram Bot</span>
                 </button>
 
-                <button onclick="openAuthModal()" class="btn-interactive px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                    <i class="fa-regular fa-user"></i>
-                    <span id="user-email-badge">เข้าสู่ระบบ</span>
+                <!-- User Profile Button -->
+                <button onclick="openAuthModal()" class="inst-btn px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono-num text-slate-300 flex items-center gap-1.5">
+                    <i class="fa-regular fa-user text-amber-400"></i>
+                    <span id="user-email-badge">Trader</span>
                 </button>
             </div>
-        </header>
+        </div>
+    </header>
 
-        <!-- ================================================================ -->
-        <!-- 2. MAIN WORKSPACE GRID (12 COLUMNS - CLEAN & ORGANIZED)          -->
-        <!-- ================================================================ -->
+    <!-- ==================================================================== -->
+    <!-- MAIN WORKSPACE BENTO GRID (12 COLUMNS)                               -->
+    <!-- ==================================================================== -->
+    <main class="max-w-[1760px] w-full mx-auto p-3 md:p-5 flex-1">
         <div class="grid grid-cols-1 xl:grid-cols-12 gap-4">
 
-            <!-- LEFT COLUMN (7 COLS): TRADINGVIEW CHART + ECONOMIC CALENDAR -->
+            <!-- ============================================================ -->
+            <!-- LEFT WORKSPACE (7 COLUMNS): CHART + FOREX FACTORY CALENDAR   -->
+            <!-- ============================================================ -->
             <div class="xl:col-span-7 space-y-4">
 
-                <!-- 2.1 กราฟ TradingView -->
-                <div class="pro-card rounded-2xl p-4 space-y-3">
-                    <div class="flex flex-wrap justify-between items-center gap-2">
+                <!-- 1. TRADINGVIEW PRO CHART PANEL -->
+                <section class="inst-panel rounded-xl p-3.5 space-y-3">
+                    <div class="flex flex-wrap justify-between items-center gap-2 border-b border-white/10 pb-2.5">
                         <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-white"><i class="fa-solid fa-chart-line text-amber-400 mr-1.5"></i>กราฟราคาทองคำ (OANDA:XAUUSD)</span>
-                            <span id="chart-tf-pill" class="px-2 py-0.5 rounded text-[10px] font-mono-num font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">TF 5M</span>
+                            <span class="text-xs font-bold text-white uppercase tracking-wider">OANDA:XAUUSD • Real-Time Feed</span>
+                            <span id="chart-tf-pill" class="px-2 py-0.5 rounded text-[10px] font-mono-num font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">TF 5M</span>
+                            <span id="chart-range-pill" class="px-2 py-0.5 rounded text-[10px] font-mono-num text-slate-400 bg-white/5">Swing Range: --</span>
                         </div>
-                        <button onclick="triggerAutoFibonacciCalculation(true)" class="btn-interactive py-1.5 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black flex items-center gap-1.5">
-                            <i id="fib-spin-icon" class="fa-solid fa-rotate"></i> คำนวณกรอบราคาใหม่
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button onclick="triggerAutoFibonacciCalculation(true)" class="inst-btn py-1 px-3 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5">
+                                <i id="fib-spin-icon" class="fa-solid fa-rotate text-[11px]"></i> Recalculate Fib
+                            </button>
+                        </div>
                     </div>
 
-                    <div class="tradingview-widget-container rounded-xl overflow-hidden border border-slate-800" style="height:500px; width:100%;">
+                    <div class="tradingview-widget-container rounded-lg overflow-hidden border border-white/10" style="height:510px; width:100%;">
                         <div id="tradingview_advanced_chart" style="height:100%; width:100%;"></div>
                     </div>
-                </div>
+                </section>
 
-                <!-- 2.2 ตารางข่าว Forex Factory -->
-                <div class="pro-card rounded-2xl p-4 space-y-3">
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-2.5">
+                <!-- 2. FOREX FACTORY LIVE CALENDAR & MORNING BRIEFING PANEL -->
+                <section class="inst-panel rounded-xl p-4 space-y-3">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 border-b border-white/10 pb-3">
                         <div>
-                            <h2 class="text-sm font-bold text-white"><i class="fa-regular fa-calendar-days text-rose-400 mr-1.5"></i>ปฏิทินข่าวเศรษฐกิจ Forex Factory (เวลาไทย)</h2>
-                            <p class="text-[11px] text-slate-400">ระบบงดส่งแจ้งเตือนอัตโนมัติในช่วงข่าวแดง ±30 นาที</p>
+                            <div class="flex items-center gap-2">
+                                <h2 class="text-xs font-bold text-white uppercase tracking-wider">Forex Factory Economic Calendar (UTC+7)</h2>
+                                <span class="px-1.5 py-0.5 text-[9px] font-mono-num font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 rounded">AUTO-SHIELD ±30M</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">สรุปตารางข่าวเศรษฐกิจสหรัฐฯ พร้อมส่งแจ้งเตือนเข้า Telegram อัตโนมัติทุกเช้าเมื่อเริ่มวัน</p>
                         </div>
-                        <div class="flex gap-1.5">
-                            <button onclick="filterNews('ALL')" id="news-filter-ALL" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-500 text-slate-950">ทั้งหมด</button>
-                            <button onclick="filterNews('TODAY')" id="news-filter-TODAY" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-900 text-slate-300 border border-slate-800">วันนี้</button>
-                            <button onclick="filterNews('HIGH')" id="news-filter-HIGH" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-900 text-rose-400 border border-slate-800">🔴 ข่าวแดง</button>
+
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <button onclick="filterNews('ALL')" id="news-filter-ALL" class="px-2.5 py-1 rounded text-[11px] font-semibold bg-amber-500 text-slate-950">ทั้งสัปดาห์</button>
+                            <button onclick="filterNews('TODAY')" id="news-filter-TODAY" class="px-2.5 py-1 rounded text-[11px] font-semibold bg-white/5 text-slate-300 border border-white/10">เฉพาะวันนี้</button>
+                            <button onclick="filterNews('HIGH')" id="news-filter-HIGH" class="px-2.5 py-1 rounded text-[11px] font-semibold bg-white/5 text-rose-400 border border-white/10">เฉพาะข่าวแดง</button>
+                            <button onclick="sendMorningBriefNow()" class="inst-btn px-2.5 py-1 rounded text-[11px] font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                                <i class="fa-brands fa-telegram mr-1"></i>ส่งสรุปข่าววันนี้เข้า Telegram
+                            </button>
                         </div>
                     </div>
 
                     <div class="overflow-x-auto max-h-[260px]">
                         <table class="w-full text-left border-collapse text-xs">
                             <thead>
-                                <tr class="text-slate-400 border-b border-slate-800 text-[10px] uppercase">
-                                    <th class="py-2 px-2">วัน / เวลา</th>
-                                    <th class="py-2 px-2">ข่าวเศรษฐกิจ (USD)</th>
-                                    <th class="py-2 px-2">ระดับ</th>
+                                <tr class="text-slate-400 border-b border-white/10 text-[10px] font-mono-num uppercase">
+                                    <th class="py-2 px-2">วัน / เวลา (ไทย)</th>
+                                    <th class="py-2 px-2">ตัวเลขเศรษฐกิจ (USD)</th>
+                                    <th class="py-2 px-2">ระดับความแรง</th>
+                                    <th class="py-2 px-2">คาดการณ์ / ก่อนหน้า</th>
                                     <th class="py-2 px-2">สถานะเวลา</th>
+                                    <th class="py-2 px-2 text-right">เกราะป้องกันพอร์ต</th>
                                 </tr>
                             </thead>
-                            <tbody id="economic-calendar-body" class="divide-y divide-slate-800/50"></tbody>
+                            <tbody id="economic-calendar-body" class="divide-y divide-white/5 font-mono-num text-[11px]"></tbody>
                         </table>
                     </div>
-                </div>
+                </section>
             </div>
 
-            <!-- RIGHT COLUMN (5 COLS): TIMEFRAME + FIB LEVELS (0.5 & 61.8%) + TELEGRAM -->
+            <!-- ============================================================ -->
+            <!-- RIGHT WORKSPACE (5 COLUMNS): REGIME + FIB MATRIX + DISPATCH  -->
+            <!-- ============================================================ -->
             <div class="xl:col-span-5 space-y-4">
 
-                <!-- 1. เลือก Timeframe (โฟกัส M5 เป็นค่าเริ่มต้น) -->
-                <div class="pro-card rounded-2xl p-4 space-y-3">
+                <!-- 1. TIMEFRAME SELECTOR & TELEMETRY BAR -->
+                <section class="inst-panel rounded-xl p-4 space-y-3">
                     <div class="flex justify-between items-center">
-                        <span class="text-xs font-bold text-white">1. เลือก Timeframe ที่ใช้คำนวณ</span>
-                        <span id="active-tf-badge" class="px-2.5 py-0.5 rounded-lg text-[11px] font-mono-num font-black bg-amber-500 text-slate-950">TF: 5M</span>
+                        <span class="text-xs font-bold text-white uppercase tracking-wider">1. Select Calculation Timeframe</span>
+                        <span id="active-tf-badge" class="px-2 py-0.5 rounded text-[11px] font-mono-num font-bold bg-amber-500 text-slate-950">ACTIVE: 5M</span>
                     </div>
+
                     <div class="grid grid-cols-6 gap-1.5">
-                        <button onclick="selectTimeframe('1m')" id="btn-1m" class="tf-btn btn-interactive py-2 rounded-xl text-xs font-bold font-mono-num border">1M</button>
-                        <button onclick="selectTimeframe('5m')" id="btn-5m" class="tf-btn btn-interactive py-2 rounded-xl text-xs font-bold font-mono-num border">5M</button>
-                        <button onclick="selectTimeframe('15m')" id="btn-15m" class="tf-btn btn-interactive py-2 rounded-xl text-xs font-bold font-mono-num border">15M</button>
-                        <button onclick="selectTimeframe('1h')" id="btn-1h" class="tf-btn btn-interactive py-2 rounded-xl text-xs font-bold font-mono-num border">1H</button>
-                        <button onclick="selectTimeframe('4h')" id="btn-4h" class="tf-btn btn-interactive py-2 rounded-xl text-xs font-bold font-mono-num border">4H</button>
-                        <button onclick="selectTimeframe('daily')" id="btn-daily" class="tf-btn btn-interactive py-2 rounded-xl text-xs font-bold font-mono-num border">1D</button>
+                        <button onclick="selectTimeframe('1m')" id="btn-1m" class="tf-btn inst-btn py-2 rounded-lg text-xs font-mono-num font-bold border">1M</button>
+                        <button onclick="selectTimeframe('5m')" id="btn-5m" class="tf-btn inst-btn py-2 rounded-lg text-xs font-mono-num font-bold border">5M</button>
+                        <button onclick="selectTimeframe('15m')" id="btn-15m" class="tf-btn inst-btn py-2 rounded-lg text-xs font-mono-num font-bold border">15M</button>
+                        <button onclick="selectTimeframe('1h')" id="btn-1h" class="tf-btn inst-btn py-2 rounded-lg text-xs font-mono-num font-bold border">1H</button>
+                        <button onclick="selectTimeframe('4h')" id="btn-4h" class="tf-btn inst-btn py-2 rounded-lg text-xs font-mono-num font-bold border">4H</button>
+                        <button onclick="selectTimeframe('daily')" id="btn-daily" class="tf-btn inst-btn py-2 rounded-lg text-xs font-mono-num font-bold border">1D</button>
                     </div>
-                </div>
+                </section>
 
-                <!-- 2. กรอบราคา Fibonacci อัตโนมัติ (มีระดับ 0.5 เตือนล่วงหน้า + 61.8% Golden Zone) -->
-                <div class="pro-card pro-card-gold rounded-2xl p-4 space-y-3.5">
-                    <div id="right-card-direction-banner" class="p-3.5 rounded-xl border text-center space-y-0.5">
-                        <div class="text-[10px] font-bold uppercase tracking-wider opacity-85">โครงสร้างกรอบราคาทางเทคนิคปัจจุบัน</div>
-                        <div id="setup-order-badge" class="text-xl md:text-2xl font-black font-mono-num">--</div>
-                        <div id="setup-order-subtext" class="text-[11px] opacity-90">--</div>
+                <!-- 2. DEDICATED SIDEWAY & MARKET REGIME DETECTOR BANNER -->
+                <section id="regime-detector-card" class="inst-panel rounded-xl p-4 border-l-4 border-l-emerald-500 transition-all">
+                    <div class="flex justify-between items-start gap-3">
+                        <div class="space-y-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] font-mono-num uppercase tracking-wider text-slate-400">MARKET REGIME & VOLATILITY DETECTOR</span>
+                                <span id="regime-badge-pill" class="px-2 py-0.5 rounded text-[10px] font-mono-num font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">TRENDING</span>
+                            </div>
+                            <h3 id="regime-headline" class="text-sm font-bold text-white">ตลาดเคลื่อนไหวมีทิศทางชัดเจน (Normal Trend Regime)</h3>
+                            <p id="regime-subtext" class="text-[11px] text-slate-400">ระยะสวิงกว้างกว่าเกณฑ์ขั้นต่ำ ($8.00) สามารถใช้กรอบ Fibonacci 0.5 และ 61.8% อ้างอิงตามปกติ</p>
+                        </div>
+                        <div class="text-right shrink-0 bg-[#06080E] px-3 py-2 rounded-lg border border-white/10">
+                            <span class="text-[9px] font-mono-num text-slate-400 block uppercase">100-BAR RANGE</span>
+                            <span id="regime-range-val" class="font-mono-num text-base font-extrabold text-emerald-400">$--</span>
+                        </div>
                     </div>
+                </section>
 
-                    <!-- แถบแจ้งเตือนล่วงหน้า 0.5 (50.0%) -->
-                    <div onclick="copyPrice('val-fib05')" class="price-box cursor-pointer bg-amber-500/10 border border-amber-500/50 p-3 rounded-xl flex justify-between items-center">
+                <!-- 3. PRECISION 2-STAGE FIBONACCI EXECUTION MATRIX -->
+                <section class="inst-panel-gold rounded-xl p-4 space-y-3.5">
+                    
+                    <!-- Direction Structure Header -->
+                    <div id="right-card-direction-banner" class="p-3.5 rounded-lg border flex justify-between items-center">
                         <div>
-                            <span class="text-[10px] font-extrabold text-amber-300 uppercase block">
-                                🔔 จุดแจ้งเตือนล่วงหน้า (FIBONACCI 0.5 / 50.0%)
-                            </span>
-                            <span class="text-[11px] text-slate-300">เมื่อราคาแตะจุดนี้ ระบบจะส่งเตือนให้เตรียมตัวก่อนถึงโซน 61.8%</span>
+                            <span class="text-[10px] font-mono-num uppercase tracking-wider text-slate-400 block">TECHNICAL SWING BIAS</span>
+                            <div id="setup-order-badge" class="text-lg md:text-xl font-extrabold font-mono-num mt-0.5">--</div>
+                            <div id="setup-order-subtext" class="text-[11px] text-slate-300 mt-0.5">--</div>
                         </div>
-                        <div class="text-right shrink-0 ml-2">
-                            <span id="val-fib05" class="font-mono-num text-xl font-black text-amber-400 block">--</span>
-                            <span class="text-[9px] bg-amber-500/20 text-amber-200 px-1.5 py-0.5 rounded">คลิกคัดลอก</span>
+                        <div class="text-right font-mono-num text-xs space-y-1 bg-[#06080E]/80 px-3 py-2 rounded border border-white/10">
+                            <div><span class="text-slate-400 text-[10px]">HIGH:</span> <strong id="display-swing-high" class="text-white">--</strong></div>
+                            <div><span class="text-slate-400 text-[10px]">LOW:</span> <strong id="display-swing-low" class="text-white">--</strong></div>
                         </div>
                     </div>
 
-                    <!-- กรอบราคาหลัก 4 จุด (คลิกคัดลอกได้ทันที) -->
+                    <!-- STAGE 1: EARLY WARNING 0.5 (50.0% EQUILIBRIUM) -->
+                    <div onclick="copyPrice('val-fib05')" class="inst-card-interactive cursor-pointer p-3.5 rounded-lg border-l-4 border-l-amber-400 flex justify-between items-center">
+                        <div class="space-y-0.5">
+                            <div class="flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono-num font-bold text-[10px]">STAGE 1 • 50.0%</span>
+                                <span class="text-xs font-bold text-amber-300">จุดแจ้งเตือนล่วงหน้า (Fibonacci 0.5 Equilibrium)</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400">บอทจะยิงแจ้งเตือนครั้งแรกเมื่อราคาแตะจุดนี้ เพื่อให้เตรียมตัวก่อนเข้า Golden Zone</p>
+                        </div>
+                        <div class="text-right shrink-0 ml-3">
+                            <span id="val-fib05" class="font-mono-num text-xl font-extrabold text-amber-400 block">--</span>
+                            <span class="text-[9px] font-mono-num text-slate-400 uppercase">Click to Copy</span>
+                        </div>
+                    </div>
+
+                    <!-- STAGE 2: GOLDEN ZONE 61.8% & RISK MATRIX (4-GRID) -->
                     <div class="grid grid-cols-2 gap-2.5">
-                        <div onclick="copyPrice('val-entry')" class="price-box cursor-pointer bg-slate-950/90 p-3 rounded-xl border border-cyan-500/50">
+                        <!-- 61.8% Golden Zone -->
+                        <div onclick="copyPrice('val-entry')" class="inst-card-interactive cursor-pointer p-3.5 rounded-lg border-l-4 border-l-sky-400">
                             <div class="flex justify-between items-center">
-                                <span id="card-entry-title" class="text-[11px] font-extrabold text-cyan-300">🔵 GOLDEN ZONE (61.8%)</span>
-                                <span class="text-[9px] text-cyan-400">คัดลอก</span>
+                                <span class="text-[10px] font-mono-num font-bold text-sky-400 uppercase">STAGE 2 • GOLDEN ZONE 61.8%</span>
+                                <i class="fa-regular fa-copy text-[10px] text-slate-500"></i>
                             </div>
-                            <div id="val-entry" class="text-xl font-black font-mono-num text-cyan-400 mt-1">--</div>
+                            <div id="val-entry" class="text-xl font-extrabold font-mono-num text-white mt-1">--</div>
+                            <span class="text-[10px] text-slate-400 block mt-0.5">โซนคำนวณทางเทคนิคหลัก</span>
                         </div>
 
-                        <div onclick="copyPrice('val-sl')" class="price-box cursor-pointer bg-slate-950/90 p-3 rounded-xl border border-rose-500/50">
+                        <!-- 78.6% Invalidation SL -->
+                        <div onclick="copyPrice('val-sl')" class="inst-card-interactive cursor-pointer p-3.5 rounded-lg border-l-4 border-l-rose-500">
                             <div class="flex justify-between items-center">
-                                <span class="text-[11px] font-extrabold text-rose-300">🔴 ระยะความเสี่ยง (78.6%)</span>
-                                <span id="val-risk-pts" class="text-[9px] font-mono-num text-rose-300">--</span>
+                                <span class="text-[10px] font-mono-num font-bold text-rose-400 uppercase">INVALIDATION • FIB 78.6%</span>
+                                <span id="val-risk-pts" class="text-[10px] font-mono-num text-rose-300">--</span>
                             </div>
-                            <div id="val-sl" class="text-xl font-black font-mono-num text-rose-400 mt-1">--</div>
+                            <div id="val-sl" class="text-xl font-extrabold font-mono-num text-rose-400 mt-1">--</div>
+                            <span class="text-[10px] text-slate-400 block mt-0.5">จุดตัดความเสี่ยงทางสถิติ</span>
                         </div>
 
-                        <div onclick="copyPrice('val-tp1')" class="price-box cursor-pointer bg-slate-950/90 p-3 rounded-xl border border-emerald-500/40">
+                        <!-- TP1 (1:2) -->
+                        <div onclick="copyPrice('val-tp1')" class="inst-card-interactive cursor-pointer p-3.5 rounded-lg border-l-4 border-l-emerald-500">
                             <div class="flex justify-between items-center">
-                                <span class="text-[11px] font-extrabold text-emerald-300">🟢 เป้าสถิติ TP1 (1:2)</span>
-                                <span id="val-tp1-pts" class="text-[9px] font-mono-num text-emerald-300">--</span>
+                                <span class="text-[10px] font-mono-num font-bold text-emerald-400 uppercase">TARGET 1 • RR 1:2</span>
+                                <span id="val-tp1-pts" class="text-[10px] font-mono-num text-emerald-300">--</span>
                             </div>
-                            <div id="val-tp1" class="text-xl font-black font-mono-num text-emerald-400 mt-1">--</div>
+                            <div id="val-tp1" class="text-xl font-extrabold font-mono-num text-emerald-400 mt-1">--</div>
+                            <span class="text-[10px] text-slate-400 block mt-0.5">เป้าหมายสถิติระยะที่ 1</span>
                         </div>
 
-                        <div onclick="copyPrice('val-tp2')" class="price-box cursor-pointer bg-slate-950/90 p-3 rounded-xl border border-amber-500/40">
+                        <!-- TP2 (1:3) -->
+                        <div onclick="copyPrice('val-tp2')" class="inst-card-interactive cursor-pointer p-3.5 rounded-lg border-l-4 border-l-amber-500">
                             <div class="flex justify-between items-center">
-                                <span class="text-[11px] font-extrabold text-amber-300">🟡 เป้าสถิติ TP2 (1:3)</span>
-                                <span id="val-tp2-pts" class="text-[9px] font-mono-num text-amber-300">--</span>
+                                <span class="text-[10px] font-mono-num font-bold text-amber-400 uppercase">TARGET 2 • RR 1:3</span>
+                                <span id="val-tp2-pts" class="text-[10px] font-mono-num text-amber-300">--</span>
                             </div>
-                            <div id="val-tp2" class="text-xl font-black font-mono-num text-amber-400 mt-1">--</div>
+                            <div id="val-tp2" class="text-xl font-extrabold font-mono-num text-amber-400 mt-1">--</div>
+                            <span class="text-[10px] text-slate-400 block mt-0.5">เป้าหมายสถิติหลัก</span>
                         </div>
                     </div>
 
-                    <!-- กรอบ Swing High / Low & คำนวณ Lot -->
-                    <div class="bg-slate-950/90 p-3 rounded-xl border border-slate-800 flex flex-wrap justify-between items-center gap-2 text-xs">
-                        <div class="flex gap-3 font-mono-num">
-                            <span>⬆️ High: <strong id="display-swing-high" class="text-white">--</strong></span>
-                            <span>⬇️ Low: <strong id="display-swing-low" class="text-white">--</strong></span>
+                    <!-- INTEGRATED POSITION SIZING CALCULATOR -->
+                    <div class="bg-[#06080E] p-3 rounded-lg border border-white/10 flex flex-wrap justify-between items-center gap-2 text-xs">
+                        <div class="flex items-center gap-3">
+                            <div>
+                                <label class="text-[10px] text-slate-400 block">Balance ($)</label>
+                                <input type="number" id="acc-balance" value="1000" oninput="recalcLotSize()" class="w-20 bg-[#111726] border border-white/15 rounded px-2 py-1 text-white font-mono-num text-xs">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block">Risk (%)</label>
+                                <input type="number" id="acc-risk-pct" value="1.5" step="0.1" oninput="recalcLotSize()" class="w-16 bg-[#111726] border border-white/15 rounded px-2 py-1 text-white font-mono-num text-xs">
+                            </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-[11px] text-slate-400">ทุน($):</span>
-                            <input type="number" id="acc-balance" value="1000" oninput="recalcLotSize()" class="w-16 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-white font-mono-num text-xs">
-                            <span id="calc-lot-result" class="text-[11px] font-mono-num font-bold text-cyan-300">0.05 Lot</span>
+                        <div class="text-right">
+                            <span class="text-[10px] text-slate-400 block uppercase font-mono-num">Recommended Position Size</span>
+                            <span id="calc-lot-result" class="font-mono-num font-extrabold text-sm text-amber-400">0.05 Lot</span>
                         </div>
                     </div>
 
-                    <!-- ปุ่มยิงเข้า Telegram ทันที -->
-                    <button id="broadcast-btn" onclick="broadcastCurrentSignal()" class="btn-interactive w-full py-3 px-4 rounded-xl font-black text-xs md:text-sm bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 text-slate-950 shadow-lg flex items-center justify-center gap-2">
-                        <i class="fa-brands fa-telegram text-base"></i>
-                        <span>ส่งระดับราคาชุดนี้เข้า Telegram ทันที</span>
+                    <!-- MANUAL TELEGRAM DISPATCH BUTTON -->
+                    <button id="broadcast-btn" onclick="broadcastCurrentSignal()" class="inst-btn w-full py-3 px-4 rounded-lg font-bold text-xs uppercase tracking-wider bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center justify-center gap-2 shadow-lg">
+                        <i class="fa-brands fa-telegram text-sm"></i>
+                        <span>Dispatch Current Matrix to Telegram Now</span>
                     </button>
-                </div>
+                </section>
 
-                <!-- 3. ปรับกรอบ Swing High / Low เอง (ซ่อนพับได้ให้หน้าเว็บคลีน) -->
-                <details class="pro-card rounded-2xl p-3.5 text-xs">
-                    <summary class="font-bold text-amber-400 cursor-pointer select-none flex justify-between items-center">
-                        <span><i class="fa-solid fa-sliders mr-1.5"></i>ปรับกรอบ Swing High / Low ด้วยตัวเอง</span>
-                        <span class="text-[10px] text-slate-400">คลิกเพื่อเปิด/ปิด</span>
+                <!-- 4. COLLAPSIBLE MANUAL SWING OVERRIDE DRAWER -->
+                <details class="inst-panel rounded-xl p-3.5 text-xs">
+                    <summary class="font-semibold text-slate-300 cursor-pointer select-none flex justify-between items-center">
+                        <span><i class="fa-solid fa-sliders text-amber-400 mr-1.5"></i> Manual Swing High / Low Override (กำหนดกรอบสวิงเอง)</span>
+                        <span class="text-[10px] font-mono-num text-slate-400">EXPAND</span>
                     </summary>
                     <div class="grid grid-cols-3 gap-2 pt-3">
-                        <select id="custom-dir" class="bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-bold">
-                            <option value="SELL">🔴 ฝั่ง SELL</option>
-                            <option value="BUY">🟢 ฝั่ง BUY</option>
+                        <select id="custom-dir" class="bg-[#06080E] border border-white/15 rounded-lg p-2 text-white font-mono-num font-bold text-xs">
+                            <option value="SELL">SELL BIAS</option>
+                            <option value="BUY">BUY BIAS</option>
                         </select>
-                        <input type="number" id="custom-high" step="0.1" placeholder="Swing High" class="bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-mono-num">
-                        <input type="number" id="custom-low" step="0.1" placeholder="Swing Low" class="bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-mono-num">
+                        <input type="number" id="custom-high" step="0.1" placeholder="Swing High" class="bg-[#06080E] border border-white/15 rounded-lg p-2 text-white font-mono-num text-xs">
+                        <input type="number" id="custom-low" step="0.1" placeholder="Swing Low" class="bg-[#06080E] border border-white/15 rounded-lg p-2 text-white font-mono-num text-xs">
                     </div>
-                    <button onclick="applyCustomSwing()" class="mt-2 w-full py-2 rounded-lg bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-amber-300 font-bold">
-                        คำนวณจากกรอบที่กำหนดเอง
+                    <button onclick="applyCustomSwing()" class="inst-btn mt-2.5 w-full py-2 rounded-lg bg-white/10 hover:bg-amber-500 hover:text-slate-950 text-slate-200 font-bold text-xs">
+                        Apply Custom Coordinates
                     </button>
                 </details>
 
-                <!-- 4. ประวัติการแจ้งเตือน & ตารางสรุปทุก Timeframe -->
-                <div class="pro-card rounded-2xl p-4 space-y-3">
-                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                <!-- 5. SIGNAL DISPATCH LOG & MULTI-TF MATRIX TABS -->
+                <section class="inst-panel rounded-xl p-4 space-y-3">
+                    <div class="flex items-center justify-between border-b border-white/10 pb-2.5">
                         <div class="flex gap-1.5">
-                            <button onclick="switchRightTab('feed')" id="tab-btn-feed" class="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-amber-500 text-slate-950">ประวัติแจ้งเตือนล่าสุด</button>
-                            <button onclick="switchRightTab('matrix')" id="tab-btn-matrix" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-950 text-slate-400 border border-slate-800">สรุปทุก Timeframe</button>
+                            <button onclick="switchRightTab('feed')" id="tab-btn-feed" class="px-2.5 py-1 rounded text-[11px] font-bold bg-amber-500 text-slate-950">Dispatch Log</button>
+                            <button onclick="switchRightTab('matrix')" id="tab-btn-matrix" class="px-2.5 py-1 rounded text-[11px] font-semibold bg-white/5 text-slate-400 border border-white/10">Multi-TF Matrix</button>
                         </div>
                         <span class="text-[10px] text-slate-400 font-mono-num" id="feed-counter-label">--</span>
                     </div>
-                    <div id="right-tab-feed" class="space-y-2 max-h-[210px] overflow-y-auto pr-1"></div>
-                    <div id="right-tab-matrix" class="hidden space-y-1.5 max-h-[210px] overflow-y-auto pr-1">
+                    <div id="right-tab-feed" class="space-y-2 max-h-[200px] overflow-y-auto pr-1"></div>
+                    <div id="right-tab-matrix" class="hidden space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
                         <div id="matrix-overview-list" class="space-y-1.5 text-xs"></div>
                     </div>
-                </div>
+                </section>
 
             </div>
         </div>
+    </main>
 
-        <!-- FOOTER DISCLAIMER -->
-        <footer class="text-center text-[11px] text-slate-500 py-2">
-            ข้อมูลทั้งหมดเกิดจากการคำนวณสูตรคณิตศาสตร์ Fibonacci อัตโนมัติเพื่อประกอบการวิเคราะห์ทางเทคนิคเท่านั้น ไม่ใช่คำแนะนำในการลงทุน
-        </footer>
-    </div>
+    <!-- INSTITUTIONAL FOOTER -->
+    <footer class="border-t border-white/10 bg-[#0B0F17] py-3 px-4 text-center text-[11px] text-slate-500 mt-6">
+        GOLD AI SNIPER PRO • Quantitative Fibonacci Retracement & Volatility Telemetry Terminal • For Technical & Statistical Reference Only (Not Financial Advice)
+    </footer>
 
-    <!-- Toast Notification -->
-    <div id="toast-notify" class="fixed bottom-5 right-5 hidden bg-emerald-400 text-slate-950 px-4 py-3 rounded-xl font-extrabold text-xs shadow-2xl z-50 flex items-center gap-2">
-        <i class="fa-solid fa-bell"></i>
-        <span id="toast-notify-text">ดำเนินการสำเร็จ!</span>
+    <!-- TOAST FEEDBACK -->
+    <div id="toast-notify" class="fixed bottom-5 right-5 hidden bg-[#111726] border border-amber-500/50 text-white px-4 py-3 rounded-lg font-medium text-xs shadow-2xl z-50 flex items-center gap-2.5">
+        <span class="status-dot bg-amber-400"></span>
+        <span id="toast-notify-text">ดำเนินการสำเร็จ</span>
     </div>
 
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script>
+        const SIDEWAY_THRESHOLD = 8.00;
         const timeframeMeta = {
-            '1m':    { label: '1 นาที (1M)',    tvInterval: '1',   lookback: 90 },
-            '5m':    { label: '5 นาที (5M)',    tvInterval: '5',   lookback: 96 },
-            '15m':   { label: '15 นาที (15M)',  tvInterval: '15',  lookback: 96 },
-            '1h':    { label: '1 ชั่วโมง (1H)', tvInterval: '60',  lookback: 100 },
-            '4h':    { label: '4 ชั่วโมง (4H)', tvInterval: '240', lookback: 100 },
-            'daily': { label: 'รายวัน (1D)',    tvInterval: 'D',   lookback: 90 }
+            '1m':    { label: '1M',  tvInterval: '1',   lookback: 90 },
+            '5m':    { label: '5M',  tvInterval: '5',   lookback: 96 },
+            '15m':   { label: '15M', tvInterval: '15',  lookback: 96 },
+            '1h':    { label: '1H',  tvInterval: '60',  lookback: 100 },
+            '4h':    { label: '4H',  tvInterval: '240', lookback: 100 },
+            'daily': { label: '1D',  tvInterval: 'D',   lookback: 90 }
         };
 
         const liveTimeframeStore = {};
-        let currentTfKey = '5m'; // โฟกัส M5 เป็นค่าเริ่มต้นตามกลยุทธ์หลัก
+        let currentTfKey = '5m';
         let currentTvLoadedInterval = null;
         let isNewsLocked = false;
         let currentRiskDollar = 5.0;
@@ -884,10 +1168,11 @@ HTML_TEMPLATE = """
         let localAlertMemory = {};
 
         // ====================================================================
-        // 1. ระบบคำนวณ FIBONACCI (0.5 + 61.8% + 78.6%)
+        // 1. QUANTITATIVE FIBONACCI & SIDEWAY DETECTION MATH
         // ====================================================================
         function calculateSniperMath(direction, swingHigh, swingLow) {
             const range = Math.max(0.5, swingHigh - swingLow);
+            const isSideway = range < SIDEWAY_THRESHOLD;
             let fib05, entry, sl, risk, tp1, tp2;
 
             if (direction === 'SELL') {
@@ -895,18 +1180,21 @@ HTML_TEMPLATE = """
                 entry = swingLow + (range * 0.618);
                 sl    = swingLow + (range * 0.786);
                 risk  = Math.abs(sl - entry);
-                tp1   = entry - (risk * 2);
-                tp2   = entry - (risk * 3);
+                tp1   = entry - (risk * 2.0);
+                tp2   = entry - (risk * 3.0);
             } else {
                 fib05 = swingHigh - (range * 0.500);
                 entry = swingHigh - (range * 0.618);
                 sl    = swingHigh - (range * 0.786);
                 risk  = Math.abs(entry - sl);
-                tp1   = entry + (risk * 2);
-                tp2   = entry + (risk * 3);
+                tp1   = entry + (risk * 2.0);
+                tp2   = entry + (risk * 3.0);
             }
 
             return {
+                rangeNum: range,
+                range: range.toFixed(2),
+                isSideway: isSideway,
                 fib05Num: fib05, entryNum: entry, slNum: sl, tp1Num: tp1, tp2Num: tp2,
                 fib05: fib05.toFixed(2),
                 entry: entry.toFixed(2),
@@ -915,31 +1203,15 @@ HTML_TEMPLATE = """
                 tp2: tp2.toFixed(2),
                 riskNum: risk,
                 riskDollar: risk.toFixed(2),
-                reward1Dollar: (risk * 2).toFixed(2),
-                reward2Dollar: (risk * 3).toFixed(2)
+                reward1Dollar: (risk * 2.0).toFixed(2),
+                reward2Dollar: (risk * 3.0).toFixed(2)
             };
-        }
-
-        // เสียงแจ้งเตือนเบาๆ บนเว็บเมื่อแตะ 0.5 หรือ 61.8%
-        function playBeepSound() {
-            try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(880, ctx.currentTime);
-                gain.gain.setValueAtTime(0.08, ctx.currentTime);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start();
-                osc.stop(ctx.currentTime + 0.18);
-            } catch (e) {}
         }
 
         async function fetchRealGoldCandles(tfKey) {
             const meta = timeframeMeta[tfKey];
             const binanceTf = tfKey === 'daily' ? '1d' : tfKey;
-            const url = `https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=${binanceTf}&limit=300`;
+            const url = `https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=${binanceTf}&limit=150`;
             const res = await fetch(url);
             const raw = await res.json();
 
@@ -968,32 +1240,69 @@ HTML_TEMPLATE = """
             return liveTimeframeStore[tfKey];
         }
 
+        function updateRegimeBanners(tfKey, mathRes) {
+            const topPill = document.getElementById('top-regime-pill');
+            const topDot = document.getElementById('top-regime-dot');
+            const topText = document.getElementById('top-regime-text');
+
+            const card = document.getElementById('regime-detector-card');
+            const badge = document.getElementById('regime-badge-pill');
+            const headline = document.getElementById('regime-headline');
+            const subtext = document.getElementById('regime-subtext');
+            const rangeVal = document.getElementById('regime-range-val');
+
+            rangeVal.innerText = `$${mathRes.range}`;
+            document.getElementById('chart-range-pill').innerText = `Swing Range: $${mathRes.range}`;
+
+            if (mathRes.isSideway) {
+                topPill.className = "px-2.5 py-1 rounded bg-amber-500/15 border border-amber-500/40 flex items-center gap-2 text-xs";
+                topDot.className = "status-dot bg-amber-400 animate-ping";
+                topText.className = "font-mono-num font-bold text-amber-400 text-[11px]";
+                topText.innerText = `SIDEWAY WARNING ($${mathRes.range})`;
+
+                card.className = "inst-panel rounded-xl p-4 border-l-4 border-l-amber-500 bg-amber-500/5 transition-all";
+                badge.className = "px-2 py-0.5 rounded text-[10px] font-mono-num font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40";
+                badge.innerText = "SIDEWAY / CHOPPY";
+                headline.className = "text-sm font-bold text-amber-300";
+                headline.innerText = `⚠️ ตรวจพบตลาด Sideway กรอบแคบผิดปกติ ($${mathRes.range} < $8.00)`;
+                subtext.innerText = "ราคากำลังบีบอัดไร้ทิศทางชัดเจน แนะนำให้ชะลอการเข้าออเดอร์ หรือลดขนาด Lot ลง 50% เพื่อป้องกันการโดนกวาด SL";
+                rangeVal.className = "font-mono-num text-base font-extrabold text-amber-400";
+            } else {
+                topPill.className = "px-2.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2 text-xs";
+                topDot.className = "status-dot bg-emerald-400";
+                topText.className = "font-mono-num font-bold text-emerald-400 text-[11px]";
+                topText.innerText = `REGIME: TRENDING ($${mathRes.range})`;
+
+                card.className = "inst-panel rounded-xl p-4 border-l-4 border-l-emerald-500 transition-all";
+                badge.className = "px-2 py-0.5 rounded text-[10px] font-mono-num font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30";
+                badge.innerText = "TRENDING REGIME";
+                headline.className = "text-sm font-bold text-white";
+                headline.innerText = `ตลาดเคลื่อนไหวมีกรอบสวิงชัดเจน (Range $${mathRes.range})`;
+                subtext.innerText = "ความผันผวนอยู่ในเกณฑ์มาตรฐาน สามารถใช้ระดับ 0.5 (เตรียมตัว) และ 61.8% (Golden Zone) อ้างอิงได้ตามปกติ";
+                rangeVal.className = "font-mono-num text-base font-extrabold text-emerald-400";
+            }
+        }
+
         function checkProximityAndAlert(tfKey, state, mathRes) {
             const pill = document.getElementById('proximity-pill');
             const price = state.currentPrice;
-            const rng = Math.max(1.0, state.swingHigh - state.swingLow);
-            const tol = Math.max(0.45, rng * 0.035);
-            const key = `${tfKey}_${state.swingHigh}_${state.swingLow}`;
+            const tol = Math.max(0.45, mathRes.rangeNum * 0.035);
+
+            if (mathRes.isSideway) {
+                pill.className = "px-2 py-0.5 text-[10px] font-mono-num font-bold rounded bg-amber-500/20 text-amber-300 border border-amber-500/40";
+                pill.innerText = "SIDEWAY PAUSE";
+                return;
+            }
 
             if (Math.abs(price - mathRes.entryNum) <= tol) {
-                pill.className = "px-2 py-0.5 text-[10px] font-extrabold rounded bg-cyan-500 text-slate-950 animate-pulse";
-                pill.innerText = "🎯 ราคาอยู่ในโซน 61.8%!";
-                if (localAlertMemory[key] !== '618') {
-                    localAlertMemory[key] = '618';
-                    playBeepSound();
-                    showToast(`🎯 [${tfKey.toUpperCase()}] ราคาแตะ Golden Zone 61.8% ($${mathRes.entry})`);
-                }
+                pill.className = "px-2 py-0.5 text-[10px] font-mono-num font-bold rounded bg-sky-500 text-slate-950";
+                pill.innerText = "IN 61.8% ZONE";
             } else if (Math.abs(price - mathRes.fib05Num) <= tol) {
-                pill.className = "px-2 py-0.5 text-[10px] font-extrabold rounded bg-amber-400 text-slate-950 animate-pulse";
-                pill.innerText = "🔔 แตะระดับ 0.5 (เตรียมตัว!)";
-                if (!localAlertMemory[key]) {
-                    localAlertMemory[key] = '05';
-                    playBeepSound();
-                    showToast(`🔔 [${tfKey.toUpperCase()}] แจ้งเตือนล่วงหน้า! ราคาแตะระดับ 0.5 ($${mathRes.fib05})`);
-                }
+                pill.className = "px-2 py-0.5 text-[10px] font-mono-num font-bold rounded bg-amber-400 text-slate-950";
+                pill.innerText = "TOUCHED 0.5 PREP";
             } else {
-                pill.className = "px-2 py-0.5 text-[10px] font-bold rounded bg-slate-800 text-slate-300";
-                pill.innerText = `รอแตะ 0.5 ($${mathRes.fib05})`;
+                pill.className = "px-2 py-0.5 text-[10px] font-mono-num font-semibold rounded bg-white/5 text-slate-300 border border-white/10";
+                pill.innerText = `WAIT 0.5 ($${mathRes.fib05})`;
             }
         }
 
@@ -1025,17 +1334,18 @@ HTML_TEMPLATE = """
             const rightSub = document.getElementById('setup-order-subtext');
 
             if (state.calcDir === 'SELL') {
-                rightBanner.className = "p-3.5 rounded-xl border border-rose-500/70 bg-rose-950/40 text-center space-y-0.5";
-                rightBadge.className = "text-xl md:text-2xl font-black font-mono-num text-rose-400";
-                rightBadge.innerText = `🔴 โครงสร้างฝั่ง SELL (${tfKey.toUpperCase()})`;
-                rightSub.innerText = `เตือนล่วงหน้า 0.5: $${mathRes.fib05} • โซน 61.8%: $${mathRes.entry}`;
+                rightBanner.className = "p-3.5 rounded-lg border border-rose-500/40 bg-rose-950/20 flex justify-between items-center";
+                rightBadge.className = "text-lg md:text-xl font-extrabold font-mono-num text-rose-400";
+                rightBadge.innerText = `BEARISH RETRACEMENT (SELL BIAS • ${tfKey.toUpperCase()})`;
+                rightSub.innerText = `เตรียมตัวที่ 0.5 ($${mathRes.fib05}) • โซนหลัก 61.8% ($${mathRes.entry})`;
             } else {
-                rightBanner.className = "p-3.5 rounded-xl border border-emerald-500/70 bg-emerald-950/40 text-center space-y-0.5";
-                rightBadge.className = "text-xl md:text-2xl font-black font-mono-num text-emerald-400";
-                rightBadge.innerText = `🟢 โครงสร้างฝั่ง BUY (${tfKey.toUpperCase()})`;
-                rightSub.innerText = `เตือนล่วงหน้า 0.5: $${mathRes.fib05} • โซน 61.8%: $${mathRes.entry}`;
+                rightBanner.className = "p-3.5 rounded-lg border border-emerald-500/40 bg-emerald-950/20 flex justify-between items-center";
+                rightBadge.className = "text-lg md:text-xl font-extrabold font-mono-num text-emerald-400";
+                rightBadge.innerText = `BULLISH RETRACEMENT (BUY BIAS • ${tfKey.toUpperCase()})`;
+                rightSub.innerText = `เตรียมตัวที่ 0.5 ($${mathRes.fib05}) • โซนหลัก 61.8% ($${mathRes.entry})`;
             }
 
+            updateRegimeBanners(tfKey, mathRes);
             checkProximityAndAlert(tfKey, state, mathRes);
             recalcLotSize();
             renderMatrixTable(tfKey);
@@ -1043,23 +1353,24 @@ HTML_TEMPLATE = """
 
         function recalcLotSize() {
             const balance = parseFloat(document.getElementById('acc-balance').value) || 1000;
-            const riskMoney = balance * 0.015; // ค่ามาตรฐาน 1.5%
-            const lossPerOneLot = Math.max(0.5, currentRiskDollar) * 100;
+            const riskPct = parseFloat(document.getElementById('acc-risk-pct').value) || 1.5;
+            const riskMoney = balance * (riskPct / 100.0);
+            const lossPerOneLot = Math.max(0.5, currentRiskDollar) * 100.0;
             const finalLot = Math.max(0.01, riskMoney / lossPerOneLot).toFixed(2);
-            document.getElementById('calc-lot-result').innerText = `${finalLot} Lot`;
+            document.getElementById('calc-lot-result').innerText = `${finalLot} Lot ($${riskMoney.toFixed(1)})`;
         }
 
         async function triggerAutoFibonacciCalculation(showNotification = true) {
             const icon = document.getElementById('fib-spin-icon');
-            if (icon) icon.className = "fa-solid fa-spinner fa-spin";
+            if (icon) icon.className = "fa-solid fa-spinner fa-spin text-[11px]";
             try {
                 const state = await fetchRealGoldCandles(currentTfKey);
                 applyStateToUI(currentTfKey, state);
-                if (showNotification) showToast(`⚡ อัปเดตกรอบราคา ${currentTfKey.toUpperCase()} เรียบร้อย`);
+                if (showNotification) showToast(`คำนวณกรอบราคา ${currentTfKey.toUpperCase()} เรียบร้อย`);
             } catch (e) {
                 console.error(e);
             } finally {
-                if (icon) icon.className = "fa-solid fa-rotate";
+                if (icon) icon.className = "fa-solid fa-rotate text-[11px]";
             }
         }
 
@@ -1069,14 +1380,14 @@ HTML_TEMPLATE = """
             if (!meta) return;
 
             document.querySelectorAll('.tf-btn').forEach(btn => {
-                btn.className = "tf-btn btn-interactive py-2 rounded-xl text-xs font-bold font-mono-num bg-slate-950 text-slate-400 border border-slate-800";
+                btn.className = "tf-btn inst-btn py-2 rounded-lg text-xs font-mono-num font-bold bg-[#06080E] text-slate-400 border border-white/10 hover:text-white";
             });
             const activeBtn = document.getElementById('btn-' + tfKey);
             if (activeBtn) {
-                activeBtn.className = "tf-btn btn-interactive py-2 rounded-xl text-xs font-black font-mono-num bg-amber-500 text-slate-950 border border-amber-300 shadow";
+                activeBtn.className = "tf-btn inst-btn py-2 rounded-lg text-xs font-mono-num font-extrabold bg-amber-500 text-slate-950 border border-amber-400";
             }
 
-            document.getElementById('active-tf-badge').innerText = 'TF: ' + tfKey.toUpperCase();
+            document.getElementById('active-tf-badge').innerText = 'ACTIVE: ' + tfKey.toUpperCase();
             loadTradingViewStudio(meta.tvInterval);
             await triggerAutoFibonacciCalculation(false);
         }
@@ -1086,13 +1397,13 @@ HTML_TEMPLATE = """
             const high = parseFloat(document.getElementById('custom-high').value);
             const low = parseFloat(document.getElementById('custom-low').value);
             if (!high || !low || high <= low) {
-                showToast('⚠️ กรุณาระบุ Swing High ให้มากกว่า Swing Low');
+                showToast('กรุณาระบุ Swing High ให้มากกว่า Swing Low');
                 return;
             }
             const curPrice = liveTimeframeStore[currentTfKey]?.currentPrice || high;
             liveTimeframeStore[currentTfKey] = { swingHigh: high, swingLow: low, currentPrice: curPrice, calcDir: dir };
             applyStateToUI(currentTfKey, liveTimeframeStore[currentTfKey]);
-            showToast('✅ คำนวณกรอบราคาจากค่าที่กำหนดเองเรียบร้อย');
+            showToast('อัปเดตกรอบราคาจากค่าที่กำหนดเองเรียบร้อย');
         }
 
         function loadTradingViewStudio(intervalCode) {
@@ -1102,14 +1413,14 @@ HTML_TEMPLATE = """
             container.innerHTML = '';
             new TradingView.widget({
                 "width": "100%",
-                "height": "500",
+                "height": "510",
                 "symbol": "OANDA:XAUUSD",
                 "interval": intervalCode,
                 "timezone": "Asia/Bangkok",
                 "theme": "dark",
                 "style": "1",
                 "locale": "th",
-                "toolbar_bg": "#03060c",
+                "toolbar_bg": "#0B0F17",
                 "enable_publishing": false,
                 "hide_side_toolbar": false,
                 "allow_symbol_change": true,
@@ -1118,20 +1429,20 @@ HTML_TEMPLATE = """
         }
 
         // ====================================================================
-        // 2. ระบบ EMAIL LOGIN + เชื่อมต่อ TELEGRAM BOT
+        // 2. AUTHENTICATION & TELEGRAM API HANDLERS
         // ====================================================================
         function checkAuthStatus() {
             const savedEmail = localStorage.getItem('gold_sniper_email');
-            const savedChatId = localStorage.getItem('gold_sniper_chat_id');
+            const savedChatId = localStorage.getItem('gold_sniper_chat_id') || '8948986514';
+            localStorage.setItem('gold_sniper_chat_id', savedChatId);
+            document.getElementById('set-chat-id').value = savedChatId;
+            document.getElementById('telegram-status-btn').innerText = `TG: ${savedChatId}`;
+
             if (!savedEmail) {
                 document.getElementById('auth-modal').classList.remove('hidden');
             } else {
                 document.getElementById('user-email-badge').innerText = savedEmail.split('@')[0];
                 document.getElementById('login-email').value = savedEmail;
-            }
-            if (savedChatId) {
-                document.getElementById('set-chat-id').value = savedChatId;
-                document.getElementById('telegram-status-btn').innerText = 'เชื่อม Telegram แล้ว';
             }
         }
 
@@ -1143,11 +1454,11 @@ HTML_TEMPLATE = """
             const email = document.getElementById('login-email').value.trim();
             const accepted = document.getElementById('login-disclaimer').checked;
             if (!email || !email.includes('@')) {
-                showToast('⚠️ กรุณากรอกอีเมลให้ถูกต้อง');
+                showToast('กรุณากรอกอีเมลให้ถูกต้อง');
                 return;
             }
             if (!accepted) {
-                showToast('⚠️ กรุณาติ๊กยอมรับข้อตกลงการใช้งานเครื่องมือทางสถิติ');
+                showToast('กรุณาติ๊กยอมรับข้อตกลงการใช้งานเครื่องมือทางเทคนิค');
                 return;
             }
 
@@ -1160,11 +1471,11 @@ HTML_TEMPLATE = """
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     email: email,
-                    chat_id: localStorage.getItem('gold_sniper_chat_id') || '',
+                    chat_id: document.getElementById('set-chat-id').value.trim(),
                     preferred_tf: currentTfKey
                 })
             });
-            showToast('✅ ยินดีต้อนรับเข้าสู่ GOLD AI SNIPER PRO');
+            showToast('เข้าสู่ระบบ GOLD AI SNIPER PRO เรียบร้อย');
         }
 
         function toggleSettingsModal() {
@@ -1172,34 +1483,39 @@ HTML_TEMPLATE = """
         }
 
         async function autoDetectTelegramChatId() {
-            showToast('🔍 กำลังค้นหา Chat ID ล่าสุดที่กด /start...');
+            showToast('กำลังค้นหา Chat ID ล่าสุดที่กด /start...');
             try {
                 const res = await fetch('/api/telegram-detect-chat');
                 const data = await res.json();
                 if (data.status === 'ok' && data.chat_id) {
                     document.getElementById('set-chat-id').value = data.chat_id;
                     localStorage.setItem('gold_sniper_chat_id', data.chat_id);
-                    showToast(`✅ พบ Chat ID: ${data.chat_id} (${data.name})`);
+                    document.getElementById('telegram-status-btn').innerText = `TG: ${data.chat_id}`;
+                    showToast(`พบ Chat ID: ${data.chat_id} (${data.name})`);
                 } else {
-                    showToast('⚠️ ยังไม่พบข้อมูล กรุณาเปิดบอทแล้วกด /start อีกครั้ง');
+                    showToast('ยังไม่พบข้อความใหม่ กรุณาทัก /start ในบอทอีกครั้ง');
                 }
             } catch (e) {
-                showToast('⚠️ ไม่สามารถดึงข้อมูลได้');
+                showToast('ไม่สามารถดึงข้อมูล Chat ID ได้');
             }
         }
 
         async function saveUserSettings() {
-            const email = localStorage.getItem('gold_sniper_email') || 'trader@gold.ai';
+            const email = localStorage.getItem('gold_sniper_email') || 'default@gold.ai';
             const chatId = document.getElementById('set-chat-id').value.trim();
             const tf = document.getElementById('set-tf').value;
             const startT = document.getElementById('set-start-time').value;
             const endT = document.getElementById('set-end-time').value;
+            const alertMorning = document.getElementById('set-alert-morning').checked;
+            const alertSideway = document.getElementById('set-alert-sideway').checked;
             const alert05 = document.getElementById('set-alert-05').checked;
             const alert618 = document.getElementById('set-alert-618').checked;
+            const balance = parseFloat(document.getElementById('acc-balance').value) || 1000;
+            const riskPct = parseFloat(document.getElementById('acc-risk-pct').value) || 1.5;
 
             localStorage.setItem('gold_sniper_chat_id', chatId);
             if (chatId) {
-                document.getElementById('telegram-status-btn').innerText = 'เชื่อม Telegram แล้ว';
+                document.getElementById('telegram-status-btn').innerText = `TG: ${chatId}`;
             }
 
             await fetch('/api/user-config', {
@@ -1211,20 +1527,24 @@ HTML_TEMPLATE = """
                     preferred_tf: tf,
                     start_time: startT,
                     end_time: endT,
+                    alert_morning_news: alertMorning,
+                    alert_sideway: alertSideway,
                     alert_05: alert05,
-                    alert_618: alert618
+                    alert_618: alert618,
+                    balance: balance,
+                    risk_pct: riskPct
                 })
             });
 
             selectTimeframe(tf);
             toggleSettingsModal();
-            showToast('✅ บันทึกการตั้งค่าและเปิดสแกนหลังบ้าน 24 ชม. เรียบร้อย!');
+            showToast('บันทึกการตั้งค่าและเปิดระบบสแกน 24 ชม. เรียบร้อย');
         }
 
         async function sendTestTelegram() {
             const chatId = document.getElementById('set-chat-id').value.trim();
             if (!chatId) {
-                showToast('⚠️ กรุณาใส่เลข Chat ID หรือกดปุ่มดึงอัตโนมัติก่อนครับ');
+                showToast('กรุณากรอกเลข Chat ID ก่อนทดสอบ');
                 return;
             }
             const res = await fetch('/api/test-telegram', {
@@ -1234,34 +1554,66 @@ HTML_TEMPLATE = """
             });
             const data = await res.json();
             if (res.ok && data.status === 'ok') {
-                showToast('🚀 ส่งข้อความทดสอบเข้า Telegram มือถือเรียบร้อย!');
+                showToast('ส่งข้อความทดสอบเข้า Telegram สำเร็จ!');
             } else {
-                showToast('⚠️ ส่งไม่สำเร็จ กรุณาเช็กว่ากด /start ในบอทหรือยัง');
+                showToast('ส่งไม่สำเร็จ: ' + (data.message || 'กรุณาเช็กการกด /start'));
+            }
+        }
+
+        async function sendMorningBriefNow() {
+            const chatId = document.getElementById('set-chat-id').value.trim() || localStorage.getItem('gold_sniper_chat_id');
+            if (!chatId) {
+                toggleSettingsModal();
+                showToast('กรุณาระบุ Chat ID ก่อนส่งสรุปข่าว');
+                return;
+            }
+            const startT = document.getElementById('set-start-time').value || '08:00';
+            const endT = document.getElementById('set-end-time').value || '22:00';
+            const res = await fetch('/api/send-morning-brief', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: chatId, start_time: startT, end_time: endT })
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                showToast('ส่งสรุปตารางข่าวประจำวันเข้า Telegram เรียบร้อย!');
+            } else {
+                showToast('ส่งสรุปข่าวไม่สำเร็จ: ' + (data.message || 'Error'));
             }
         }
 
         async function broadcastCurrentSignal() {
             if (isNewsLocked) {
-                showToast('🛑 ระบบงดส่งแจ้งเตือนชั่วคราวเนื่องจากอยู่ในช่วงข่าวแดง');
+                showToast('ระบบล็อกการส่งชั่วคราวเนื่องจากอยู่ในช่วงเฝ้าระวังข่าวแดง');
                 return;
             }
             const chatId = document.getElementById('set-chat-id').value.trim() || localStorage.getItem('gold_sniper_chat_id') || '';
             if (!chatId) {
                 toggleSettingsModal();
-                showToast('⚠️ กรุณาเชื่อมต่อ Telegram Chat ID ก่อนส่งแจ้งเตือนครับ');
+                showToast('กรุณาตั้งค่า Telegram Chat ID ก่อนส่งสัญญาณ');
                 return;
             }
+
+            const curState = liveTimeframeStore[currentTfKey];
+            const mathRes = calculateSniperMath(
+                document.getElementById('custom-dir').value,
+                parseFloat(document.getElementById('display-swing-high').innerText.replace('$', '')),
+                parseFloat(document.getElementById('display-swing-low').innerText.replace('$', ''))
+            );
 
             const payload = {
                 chat_id: chatId,
                 symbol: 'XAUUSD',
                 tf: currentTfKey.toUpperCase(),
                 direction: document.getElementById('custom-dir').value,
-                fib_05: document.getElementById('val-fib05').innerText.replace('$', ''),
-                entry: document.getElementById('val-entry').innerText.replace('$', ''),
-                sl: document.getElementById('val-sl').innerText.replace('$', ''),
-                tp1: document.getElementById('val-tp1').innerText.replace('$', ''),
-                tp2: document.getElementById('val-tp2').innerText.replace('$', '')
+                regime: mathRes.isSideway ? 'SIDEWAY' : 'TRENDING',
+                range: mathRes.range,
+                fib_05: mathRes.fib05,
+                entry: mathRes.entry,
+                sl: mathRes.sl,
+                tp1: mathRes.tp1,
+                tp2: mathRes.tp2,
+                lot: document.getElementById('calc-lot-result').innerText
             };
 
             const res = await fetch('/api/send-signal', {
@@ -1273,25 +1625,25 @@ HTML_TEMPLATE = """
             if (res.ok) {
                 const data = await res.json();
                 renderSignalFeed(data.signal_history);
-                showToast('🚀 ส่งระดับราคาเข้า Telegram เรียบร้อย!');
+                showToast('ส่งข้อมูลระดับราคาเข้า Telegram เรียบร้อย!');
             } else {
                 const err = await res.json();
-                showToast('⚠️ ' + (err.message || 'ส่งไม่สำเร็จ'));
+                showToast('ส่งไม่สำเร็จ: ' + (err.message || 'Error'));
             }
         }
 
         // ====================================================================
-        // 3. ตารางสรุป & ปฏิทินข่าว
+        // 3. TABLES, LOGS & ECONOMIC CALENDAR RENDERING
         // ====================================================================
         function switchRightTab(tab) {
             document.getElementById('right-tab-feed').classList.toggle('hidden', tab !== 'feed');
             document.getElementById('right-tab-matrix').classList.toggle('hidden', tab !== 'matrix');
             document.getElementById('tab-btn-feed').className = tab === 'feed'
-                ? "px-2.5 py-1 rounded-lg text-xs font-extrabold bg-amber-500 text-slate-950"
-                : "px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-950 text-slate-400 border border-slate-800";
+                ? "px-2.5 py-1 rounded text-[11px] font-bold bg-amber-500 text-slate-950"
+                : "px-2.5 py-1 rounded text-[11px] font-semibold bg-white/5 text-slate-400 border border-white/10";
             document.getElementById('tab-btn-matrix').className = tab === 'matrix'
-                ? "px-2.5 py-1 rounded-lg text-xs font-extrabold bg-amber-500 text-slate-950"
-                : "px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-950 text-slate-400 border border-slate-800";
+                ? "px-2.5 py-1 rounded text-[11px] font-bold bg-amber-500 text-slate-950"
+                : "px-2.5 py-1 rounded text-[11px] font-semibold bg-white/5 text-slate-400 border border-white/10";
         }
 
         function renderMatrixTable(activeKey) {
@@ -1302,18 +1654,19 @@ HTML_TEMPLATE = """
                 if (!st) return;
                 const lvls = calculateSniperMath(st.calcDir, st.swingHigh, st.swingLow);
                 const row = document.createElement('div');
-                row.className = `flex items-center justify-between p-2.5 rounded-xl border cursor-pointer ${
-                    key === activeKey ? 'bg-amber-500/15 border-amber-500/50' : 'bg-slate-950 border-slate-800'
+                row.className = `flex items-center justify-between p-2.5 rounded-lg border cursor-pointer font-mono-num ${
+                    key === activeKey ? 'bg-amber-500/10 border-amber-500/40' : 'bg-[#06080E] border-white/10 hover:border-white/20'
                 }`;
                 row.onclick = () => selectTimeframe(key);
                 row.innerHTML = `
                     <div class="flex items-center gap-2">
-                        <span class="font-black font-mono-num text-amber-400 w-10 uppercase">${key}</span>
-                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${st.calcDir === 'SELL' ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'}">${st.calcDir}</span>
+                        <span class="font-bold text-amber-400 w-8 uppercase">${key}</span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${st.calcDir === 'SELL' ? 'bg-rose-500/15 text-rose-400' : 'bg-emerald-500/15 text-emerald-400'}">${st.calcDir}</span>
+                        <span class="text-[10px] ${lvls.isSideway ? 'text-amber-400' : 'text-slate-400'}">${lvls.isSideway ? 'SIDEWAY' : 'TREND'} ($${lvls.range})</span>
                     </div>
-                    <div class="flex gap-2.5 text-[11px] font-mono-num">
+                    <div class="flex gap-3 text-[11px]">
                         <span class="text-amber-300">0.5: $${lvls.fib05}</span>
-                        <span class="text-cyan-400 font-bold">61.8%: $${lvls.entry}</span>
+                        <span class="text-sky-400 font-bold">61.8%: $${lvls.entry}</span>
                     </div>
                 `;
                 list.appendChild(row);
@@ -1322,22 +1675,22 @@ HTML_TEMPLATE = """
 
         function renderSignalFeed(signals) {
             const container = document.getElementById('right-tab-feed');
-            document.getElementById('feed-counter-label').innerText = `${signals.length} รายการ`;
+            document.getElementById('feed-counter-label').innerText = `${signals.length} RECORDS`;
             container.innerHTML = '';
             signals.forEach(sig => {
                 const isSell = sig.direction === 'SELL';
                 const card = document.createElement('div');
-                card.className = `p-3 rounded-xl bg-slate-950 border border-slate-800 border-l-4 ${isSell ? 'border-l-rose-500' : 'border-l-emerald-500'} space-y-1 text-xs`;
+                card.className = `p-3 rounded-lg bg-[#06080E] border border-white/10 border-l-2 ${isSell ? 'border-l-rose-500' : 'border-l-emerald-500'} space-y-1 text-xs font-mono-num`;
                 card.innerHTML = `
                     <div class="flex justify-between items-center">
-                        <span class="font-bold text-white">${sig.symbol} • TF ${sig.tf} (${sig.direction})</span>
-                        <span class="text-[10px] font-mono-num text-slate-400">${sig.time}</span>
+                        <span class="font-bold text-white">${sig.symbol} • ${sig.tf} (${sig.direction})</span>
+                        <span class="text-[10px] text-slate-400">${sig.time}</span>
                     </div>
-                    <div class="flex flex-wrap gap-2 font-mono-num text-[11px] pt-0.5">
+                    <div class="flex flex-wrap gap-2.5 text-[11px] pt-0.5">
                         <span class="text-amber-300">0.5: $${sig.fib_05 || '-'}</span>
-                        <span class="text-cyan-400 font-bold">61.8%: $${sig.entry}</span>
+                        <span class="text-sky-400 font-bold">61.8%: $${sig.entry}</span>
                         <span class="text-rose-400">SL: $${sig.sl}</span>
-                        <span class="text-emerald-400">TP1: $${sig.tp1}</span>
+                        <span class="text-emerald-400">TP2: $${sig.tp2}</span>
                     </div>
                 `;
                 container.appendChild(card);
@@ -1358,6 +1711,13 @@ HTML_TEMPLATE = """
 
         function filterNews(mode) {
             currentNewsFilter = mode;
+            ['ALL', 'TODAY', 'HIGH'].forEach(m => {
+                const btn = document.getElementById('news-filter-' + m);
+                if (!btn) return;
+                btn.className = (m === mode)
+                    ? "px-2.5 py-1 rounded text-[11px] font-semibold bg-amber-500 text-slate-950"
+                    : "px-2.5 py-1 rounded text-[11px] font-semibold bg-white/5 text-slate-300 border border-white/10";
+            });
             renderCalendarTable();
         }
 
@@ -1370,19 +1730,22 @@ HTML_TEMPLATE = """
                 return true;
             });
             if (!filtered.length) {
-                tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-slate-500">ไม่มีรายการข่าวในหมวดนี้</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-slate-500">ไม่มีรายการข่าวเศรษฐกิจในหมวดที่เลือก</td></tr>`;
                 return;
             }
             filtered.forEach(item => {
                 const badge = item.impact === 'HIGH'
-                    ? '<span class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 font-bold text-[10px]">🔴 ข่าวแดง</span>'
-                    : '<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-[10px]">🟠 ปานกลาง</span>';
+                    ? '<span class="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold text-[10px]">HIGH</span>'
+                    : '<span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold text-[10px]">MED</span>';
                 const tr = document.createElement('tr');
+                tr.className = "hover:bg-white/[0.02]";
                 tr.innerHTML = `
-                    <td class="py-2 px-2 font-mono-num text-amber-300 whitespace-nowrap">${item.date_label} ${item.time_label}</td>
-                    <td class="py-2 px-2 text-slate-200">${item.event}</td>
-                    <td class="py-2 px-2 whitespace-nowrap">${badge}</td>
-                    <td class="py-2 px-2 text-[11px] text-slate-400 whitespace-nowrap">${item.countdown}</td>
+                    <td class="py-2.5 px-2 text-amber-300 whitespace-nowrap">${item.date_label} • ${item.time_label}</td>
+                    <td class="py-2.5 px-2 text-slate-200 font-sans font-medium">${item.event}</td>
+                    <td class="py-2.5 px-2 whitespace-nowrap">${badge}</td>
+                    <td class="py-2.5 px-2 text-slate-400 whitespace-nowrap">${item.forecast} / ${item.previous}</td>
+                    <td class="py-2.5 px-2 text-slate-300 whitespace-nowrap">${item.countdown}</td>
+                    <td class="py-2.5 px-2 text-right text-slate-400 whitespace-nowrap">${item.status}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -1393,15 +1756,15 @@ HTML_TEMPLATE = """
             const dot = document.getElementById('shield-dot');
             const text = document.getElementById('shield-status-text');
             if (locked) {
-                box.className = "bg-rose-950/60 border border-rose-500/60 px-3 py-1.5 rounded-xl flex items-center gap-2";
-                dot.className = "w-2 h-2 rounded-full bg-rose-500 animate-ping";
+                box.className = "px-2.5 py-1 rounded bg-rose-500/15 border border-rose-500/40 flex items-center gap-2 text-xs";
+                dot.className = "status-dot bg-rose-500 animate-ping";
                 text.className = "text-[11px] font-bold text-rose-400";
-                text.innerText = "ล็อกช่วงข่าวแดง";
+                text.innerText = "SHIELD ACTIVE (LOCKED)";
             } else {
-                box.className = "bg-emerald-950/40 border border-emerald-500/40 px-3 py-1.5 rounded-xl flex items-center gap-2";
-                dot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-ping";
-                text.className = "text-[11px] font-bold text-emerald-400";
-                text.innerText = "ตลาดปกติ";
+                box.className = "px-2.5 py-1 rounded bg-white/5 border border-white/10 flex items-center gap-2 text-xs";
+                dot.className = "status-dot bg-emerald-400";
+                text.className = "text-[11px] font-medium text-slate-300";
+                text.innerText = "News Shield: Standby";
             }
         }
 
@@ -1410,31 +1773,31 @@ HTML_TEMPLATE = """
             const data = await res.json();
             isNewsLocked = data.news_locked;
             updateNewsShieldUI(isNewsLocked, data.lock_reason);
+            showToast(isNewsLocked ? 'เปิดโหมดจำลองการล็อกช่วงข่าวแดง' : 'ปลดล็อกโหมดข่าวแดง');
         }
 
         function copyPrice(elementId) {
             const text = document.getElementById(elementId).innerText.replace('$', '');
             navigator.clipboard.writeText(text);
-            showToast(`✅ คัดลอกราคา $${text} แล้ว`);
+            showToast(`คัดลอกระดับราคา $${text} เรียบร้อย`);
         }
 
         function showToast(msg) {
             const toast = document.getElementById('toast-notify');
             document.getElementById('toast-notify-text').innerText = msg;
             toast.classList.remove('hidden');
-            setTimeout(() => toast.classList.add('hidden'), 3200);
+            setTimeout(() => toast.classList.add('hidden'), 3000);
         }
 
         window.addEventListener('DOMContentLoaded', async () => {
             checkAuthStatus();
-            await selectTimeframe('5m'); // เริ่มที่ M5 ทันที
+            await selectTimeframe('5m');
             await loadSystemState();
             for (const k of Object.keys(timeframeMeta)) {
                 if (k !== currentTfKey) { try { await fetchRealGoldCandles(k); } catch (e) {} }
             }
             renderMatrixTable(currentTfKey);
 
-            // อัปเดตราคาบนหน้าเว็บอัตโนมัติทุก 20 วินาที
             setInterval(() => {
                 triggerAutoFibonacciCalculation(false);
             }, 20000);
@@ -1446,7 +1809,7 @@ HTML_TEMPLATE = """
 
 
 # ==============================================================================
-# 6. BACKEND API ENDPOINTS
+# 7. FLASK API ENDPOINTS
 # ==============================================================================
 @app.route('/')
 def index():
@@ -1463,9 +1826,10 @@ def get_system_state():
     return jsonify({
         "safe_to_trade": not is_locked,
         "news_locked": is_locked,
-        "lock_reason": "ล็อกช่วงข่าวแดง" if is_locked else "ตลาดปกติ",
+        "lock_reason": "SHIELD LOCKED" if is_locked else "STANDBY",
         "signal_history": SYSTEM_STATE["signal_history"],
         "economic_calendar": calendar_events,
+        "scanner_last_run": SYSTEM_STATE["scanner_last_run"],
         "server_time": now_dt.strftime("%Y-%m-%d %H:%M:%S")
     })
 
@@ -1473,15 +1837,21 @@ def get_system_state():
 @app.route('/api/user-config', methods=['POST'])
 def save_user_config():
     data = request.json or {}
-    email = data.get("email", "trader@gold.ai").strip().lower()
+    email = data.get("email", "default@gold.ai").strip().lower()
+    chat_id = str(data.get("chat_id", "8948986514")).strip()
+
     USERS_DB[email] = {
         "email": email,
-        "chat_id": str(data.get("chat_id", "")).strip(),
+        "chat_id": chat_id,
         "preferred_tf": data.get("preferred_tf", "5m").lower(),
         "start_time": data.get("start_time", "08:00"),
-        "end_time": data.get("end_time", "23:59"),
+        "end_time": data.get("end_time", "22:00"),
+        "alert_morning_news": bool(data.get("alert_morning_news", True)),
+        "alert_sideway": bool(data.get("alert_sideway", True)),
         "alert_05": bool(data.get("alert_05", True)),
         "alert_618": bool(data.get("alert_618", True)),
+        "balance": float(data.get("balance", 1000.0)),
+        "risk_pct": float(data.get("risk_pct", 1.5)),
         "auto_alert": True
     }
     return jsonify({"status": "ok", "user": USERS_DB[email]})
@@ -1499,12 +1869,37 @@ def detect_telegram_chat():
 def test_telegram():
     data = request.json or {}
     chat_id = data.get("chat_id", "").strip()
+    now_dt = datetime.now(TH_TZ)
     msg = (
-        "✅ <b>เชื่อมต่อ GOLD AI SNIPER PRO สำเร็จ!</b>\n"
-        "ระบบพร้อมส่งแจ้งเตือนอัตโนมัติเมื่อราคาทองคำแตะระดับ <b>0.5 (เตรียมตัว)</b> และ <b>61.8% (Golden Zone)</b> โดยไม่ต้องเปิดหน้าเว็บค้างไว้ครับ"
+        f"✅ <b>GOLD AI SNIPER PRO — TERMINAL LINKED</b>\n"
+        f"🕒 <b>เวลาเซิร์ฟเวอร์:</b> {now_dt.strftime('%H:%M:%S')} น.\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"ระบบเชื่อมต่อกับ Telegram ของคุณสำเร็จ 100% พร้อมสแกนและแจ้งเตือน:\n"
+        f"1. 🌅 สรุปตารางข่าวแดงประจำวันตอนเช้า\n"
+        f"2. ⚠️ เตือนเมื่อตลาดเข้าโหมด Sideway (&lt; ${SIDEWAY_THRESHOLD_DOLLAR:.2f})\n"
+        f"3. 🔔 เตือนล่วงหน้าเมื่อแตะระดับ 0.5 (50.0%)\n"
+        f"4. 🎯 เตือนเมื่อราคาเข้า Golden Zone 61.8%"
     )
     ok, err = send_telegram_message(chat_id, msg)
     if ok:
+        return jsonify({"status": "ok"})
+    return jsonify({"status": "error", "message": err}), 400
+
+
+@app.route('/api/send-morning-brief', methods=['POST'])
+def trigger_morning_brief():
+    data = request.json or {}
+    chat_id = data.get("chat_id", "").strip()
+    start_t = data.get("start_time", "08:00")
+    end_t = data.get("end_time", "22:00")
+    now_dt = datetime.now(TH_TZ)
+    calendar_events = fetch_forex_factory_calendar()
+
+    msg = build_morning_news_brief_message(now_dt, calendar_events, start_t, end_t)
+    ok, err = send_telegram_message(chat_id, msg)
+    if ok:
+        today_str = now_dt.strftime("%Y-%m-%d")
+        SYSTEM_STATE["morning_brief_memory"][f"{chat_id}_{today_str}"] = True
         return jsonify({"status": "ok"})
     return jsonify({"status": "error", "message": err}), 400
 
@@ -1515,7 +1910,7 @@ def toggle_news_lock():
     return jsonify({
         "status": "ok",
         "news_locked": SYSTEM_STATE["manual_news_lock"],
-        "lock_reason": "ล็อกช่วงข่าวแดง" if SYSTEM_STATE["manual_news_lock"] else "ตลาดปกติ"
+        "lock_reason": "SHIELD LOCKED" if SYSTEM_STATE["manual_news_lock"] else "STANDBY"
     })
 
 
@@ -1528,7 +1923,7 @@ def send_signal():
     if SYSTEM_STATE["manual_news_lock"] or auto_locking_event:
         return jsonify({
             "status": "blocked",
-            "message": "ระบบล็อกการส่งเนื่องจากอยู่ในช่วงเฝ้าระวังข่าวแรง"
+            "message": "News Shield Active: ระบบล็อกการส่งสัญญาณในช่วงข่าวแดง"
         }), 403
 
     data = request.json or {}
@@ -1540,31 +1935,35 @@ def send_signal():
         "symbol": data.get("symbol", "XAUUSD"),
         "tf": data.get("tf", "5M"),
         "direction": data.get("direction", "SELL"),
+        "regime": data.get("regime", "TRENDING"),
+        "range": data.get("range", "0.00"),
         "fib_05": data.get("fib_05", "0.00"),
         "entry": data.get("entry", "0.00"),
         "sl": data.get("sl", "0.00"),
         "tp1": data.get("tp1", "0.00"),
         "tp2": data.get("tp2", "0.00"),
-        "status": "TELEGRAM SENT"
+        "status": "DISPATCHED"
     }
 
     SYSTEM_STATE["latest_signal"] = sig
     SYSTEM_STATE["signal_history"].insert(0, sig)
 
-    # ข้อความสั้น กระชับ เน้นตัวเลข ไม่รำคาญ
+    regime_tag = "⚠️ SIDEWAY WARNING" if sig["regime"] == "SIDEWAY" else "🟢 TRENDING REGIME"
     msg = (
-        f"🔔 <b>XAUUSD ({sig['tf']}) • โครงสร้าง {sig['direction']}</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"🟡 <b>จุดเตรียมตัว (0.5):</b> ${sig['fib_05']}\n"
-        f"🔵 <b>Golden Zone (61.8%):</b> ${sig['entry']}\n"
-        f"🔴 <b>ระยะ 78.6% (SL):</b> ${sig['sl']}\n"
-        f"🟢 <b>TP1 (1:2):</b> ${sig['tp1']}\n"
-        f"🟡 <b>TP2 (1:3):</b> ${sig['tp2']}"
+        f"📐 <b>XAUUSD ({sig['tf']}) • {sig['direction']} MATRIX</b>\n"
+        f"📡 <b>สถานะตลาด:</b> {regime_tag} (Range ${sig['range']})\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔔 <b>Stage 1 — จุดเตรียมตัว (0.5):</b> ${sig['fib_05']}\n"
+        f"🔵 <b>Stage 2 — Golden Zone (61.8%):</b> ${sig['entry']}\n"
+        f"🔴 <b>Invalidation (78.6% SL):</b> ${sig['sl']}\n"
+        f"🟢 <b>Target 1 (1:2):</b> ${sig['tp1']}\n"
+        f"🟡 <b>Target 2 (1:3):</b> ${sig['tp2']}\n"
+        f"⚖️ <b>ขนาด Lot แนะนำ:</b> {data.get('lot', '0.05 Lot')}"
     )
 
     ok, err = send_telegram_message(chat_id, msg)
     if not ok:
-        return jsonify({"status": "error", "message": f"ส่งเข้า Telegram ไม่สำเร็จ: {err}"}), 400
+        return jsonify({"status": "error", "message": err}), 400
 
     return jsonify({
         "status": "success",

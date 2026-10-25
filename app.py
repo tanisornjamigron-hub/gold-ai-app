@@ -19,8 +19,6 @@ TELEGRAM_BOT_TOKEN = os.environ.get(
 TELEGRAM_BOT_USERNAME = "gold_ai_sniper_pro_bot"
 
 TH_TZ = timezone(timedelta(hours=7))
-
-# เกณฑ์ตัดสินตลาด Sideway (กรอบสวิงแคบกว่า $8.00 งดเทรดเด็ดขาด)
 SIDEWAY_THRESHOLD_DOLLAR = 8.00
 
 FF_CACHE = {
@@ -33,14 +31,6 @@ USERS_DB = {
         "email": "default@gold.ai",
         "chat_id": "8948986514",
         "preferred_tf": "5m",
-        "start_time": "08:00",
-        "end_time": "22:00",
-        "alert_05": True,
-        "alert_618": True,
-        "alert_sideway": True,
-        "alert_morning_news": True,
-        "balance": 1000.0,
-        "risk_pct": 1.5,
         "auto_alert": True
     }
 }
@@ -48,9 +38,6 @@ USERS_DB = {
 SYSTEM_STATE = {
     "manual_news_lock": False,
     "lock_reason": "NORMAL MARKET REGIME",
-    "latest_signal": None,
-    "last_alert_memory": {},
-    "morning_brief_memory": {},
     "scanner_last_run": "-",
     "signal_history": [
         {
@@ -67,9 +54,7 @@ SYSTEM_STATE = {
             "sl": "2745.20",
             "tp1": "2725.10",
             "tp2": "2718.40",
-            "rr": "1:3",
-            "status": "DISPATCHED",
-            "reason": "Technical retracement to 61.8% Golden Zone in trending regime."
+            "status": "DISPATCHED"
         }
     ],
     "custom_news": []
@@ -81,7 +66,6 @@ THAI_MONTHS = [
     "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."
 ]
 
-
 def format_thai_date(dt_obj):
     day_name = THAI_DAYS[dt_obj.weekday()]
     month_name = THAI_MONTHS[dt_obj.month]
@@ -89,7 +73,7 @@ def format_thai_date(dt_obj):
 
 
 # ==============================================================================
-# 2. TELEGRAM BOT ENGINE & AUTO CHAT-ID DISCOVERY
+# 2. TELEGRAM BOT ENGINE
 # ==============================================================================
 def send_telegram_message(chat_id, text):
     if not TELEGRAM_BOT_TOKEN or not chat_id:
@@ -103,25 +87,14 @@ def send_telegram_message(chat_id, text):
             "disable_web_page_preview": True
         }).encode("utf-8")
         req = urllib.request.Request(
-            url,
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "User-Agent": "GoldAISniperInstitutional/5.0"
-            }
+            url, data=payload,
+            headers={"Content-Type": "application/json", "User-Agent": "GoldAISniperInstitutional/5.0"}
         )
         with urllib.request.urlopen(req, timeout=8) as resp:
             res_data = json.loads(resp.read().decode("utf-8"))
             if res_data.get("ok"):
                 return True, "OK"
             return False, res_data.get("description", "Telegram API Error")
-    except urllib.error.HTTPError as he:
-        try:
-            err_body = he.read().decode("utf-8")
-            err_json = json.loads(err_body)
-            return False, f"HTTP {he.code}: {err_json.get('description', err_body)}"
-        except Exception:
-            return False, f"HTTP Error {he.code}: {he.reason}"
     except Exception as e:
         return False, str(e)
 
@@ -136,15 +109,10 @@ def fetch_latest_telegram_chat_id():
             data = json.loads(resp.read().decode("utf-8"))
             if data.get("ok") and data.get("result"):
                 for item in reversed(data["result"]):
-                    msg = (
-                        item.get("message")
-                        or item.get("edited_message")
-                        or item.get("my_chat_member")
-                        or item.get("channel_post")
-                    )
+                    msg = item.get("message") or item.get("edited_message") or item.get("my_chat_member")
                     if msg and "chat" in msg:
                         chat_id = str(msg["chat"]["id"])
-                        first_name = msg["chat"].get("first_name") or msg["chat"].get("title") or "Trader"
+                        first_name = msg["chat"].get("first_name") or "Trader"
                         return chat_id, first_name
     except Exception as e:
         print("Telegram getUpdates Error:", e)
@@ -152,9 +120,9 @@ def fetch_latest_telegram_chat_id():
 
 
 # ==============================================================================
-# 3. QUANTITATIVE FIBONACCI & SIDEWAY REGIME ENGINE
+# 3. FIBONACCI & SIDEWAY ENGINE
 # ==============================================================================
-def calculate_fib_levels(direction, swing_high, swing_low, balance=1000.0, risk_pct=1.5):
+def calculate_fib_levels(direction, swing_high, swing_low):
     rng = max(0.50, swing_high - swing_low)
     is_sideway = rng < SIDEWAY_THRESHOLD_DOLLAR
 
@@ -173,10 +141,6 @@ def calculate_fib_levels(direction, swing_high, swing_low, balance=1000.0, risk_
         tp1 = entry + (risk * 2.0)
         tp2 = entry + (risk * 3.0)
 
-    risk_money = balance * (risk_pct / 100.0)
-    loss_per_lot = max(0.50, risk) * 100.0
-    rec_lot = max(0.01, round(risk_money / loss_per_lot, 2))
-
     return {
         "direction": "NO TRADE (SIDEWAY)" if is_sideway else direction,
         "raw_direction": direction,
@@ -184,28 +148,16 @@ def calculate_fib_levels(direction, swing_high, swing_low, balance=1000.0, risk_
         "swing_low": round(swing_low, 2),
         "range": round(rng, 2),
         "is_sideway": is_sideway,
-        "regime": "SIDEWAY" if is_sideway else "TRENDING",
         "fib_05": round(fib_05, 2),
         "entry": round(entry, 2),
         "sl": round(sl, 2),
         "tp1": round(tp1, 2),
-        "tp2": round(tp2, 2),
-        "risk": round(risk, 2),
-        "reward1": round(risk * 2.0, 2),
-        "reward2": round(risk * 3.0, 2),
-        "recommended_lot": f"{rec_lot:.2f}"
+        "tp2": round(tp2, 2)
     }
 
 
 def fetch_server_gold_candles(tf_key="5m"):
-    tf_map = {
-        "1m": ("1m", 90),
-        "5m": ("5m", 96),
-        "15m": ("15m", 96),
-        "1h": ("1h", 100),
-        "4h": ("4h", 100),
-        "daily": ("1d", 90)
-    }
+    tf_map = {"1m": ("1m", 90), "5m": ("5m", 96), "15m": ("15m", 96), "1h": ("1h", 100), "4h": ("4h", 100), "daily": ("1d", 90)}
     b_tf, lookback = tf_map.get(tf_key.lower(), ("5m", 96))
     url = f"https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval={b_tf}&limit={lookback}"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -214,12 +166,9 @@ def fetch_server_gold_candles(tf_key="5m"):
 
     swing_high = -1e9
     swing_low = 1e9
-    high_idx = 0
-    low_idx = 0
-
+    high_idx, low_idx = 0, 0
     for idx, k in enumerate(raw):
-        h = float(k[2])
-        l = float(k[3])
+        h, l = float(k[2]), float(k[3])
         if h > swing_high:
             swing_high = h
             high_idx = idx
@@ -236,7 +185,7 @@ def fetch_server_gold_candles(tf_key="5m"):
 
 
 # ==============================================================================
-# 4. FOREX FACTORY & MORNING BRIEFING
+# 4. FOREX FACTORY CALENDAR & MORNING BRIEFING
 # ==============================================================================
 def compute_countdown_and_lock(event_dt, now_dt, impact):
     diff_sec = (event_dt - now_dt).total_seconds()
@@ -261,9 +210,8 @@ def compute_countdown_and_lock(event_dt, now_dt, impact):
             countdown = f"พรุ่งนี้ • {event_dt.strftime('%H:%M')} น."
             urgency = "TOMORROW"
         else:
-            countdown = f"อีก {days} วัน ({format_thai_date(event_dt)})"
+            countdown = f"อีก {days} วัน"
             urgency = "FUTURE"
-
     return countdown, urgency, is_auto_locking_now
 
 
@@ -291,7 +239,6 @@ def get_fallback_forex_factory_schedule(now_dt):
             "date_label": format_thai_date(ev_dt),
             "iso_date": ev_dt.strftime("%Y-%m-%d"),
             "time_label": ev_dt.strftime("%H:%M น."),
-            "lock_window": f"{lock_start} - {lock_end} น.",
             "currency": curr,
             "event": title,
             "impact": impact,
@@ -345,7 +292,6 @@ def fetch_forex_factory_calendar():
                 "date_label": format_thai_date(ev_dt),
                 "iso_date": ev_dt.strftime("%Y-%m-%d"),
                 "time_label": ev_dt.strftime("%H:%M น."),
-                "lock_window": f"{lock_start} - {lock_end} น.",
                 "currency": "USD",
                 "event": item.get("title", "USD Economic Event"),
                 "impact": impact_raw,
@@ -365,9 +311,9 @@ def fetch_forex_factory_calendar():
     return all_events
 
 
-def build_morning_news_brief_message(now_dt, calendar_events, start_t, end_t):
+def build_morning_news_brief_message(now_dt, calendar_events):
     today_iso = now_dt.strftime("%Y-%m-%d")
-    today_high = [ev for ev in calendar_events if ev.get("iso_date") == today_iso and ev.get("impact"] == "HIGH"]
+    today_high = [ev for ev in calendar_events if ev.get("iso_date") == today_iso and ev.get("impact") == "HIGH"]
     lines = [
         f"🌅 <b>GOLD AI SNIPER PRO — MORNING BRIEFING</b>",
         f"📅 <b>ประจำวัน:</b> {format_thai_date(now_dt)}",
@@ -384,113 +330,7 @@ def build_morning_news_brief_message(now_dt, calendar_events, start_t, end_t):
 
 
 # ==============================================================================
-# 5. BACKGROUND SCANNER THREAD
-# ==============================================================================
-def is_within_schedule(now_dt, start_str, end_str):
-    try:
-        cur_mins = now_dt.hour * 60 + now_dt.minute
-        sh, sm = map(int, start_str.split(":"))
-        eh, em = map(int, end_str.split(":"))
-        start_mins = sh * 60 + sm
-        end_mins = eh * 60 + em
-        if start_mins <= end_mins:
-            return start_mins <= cur_mins <= end_mins
-        return cur_mins >= start_mins or cur_mins <= end_mins
-    except Exception:
-        return True
-
-
-def background_price_scanner():
-    while True:
-        try:
-            now_dt = datetime.now(TH_TZ)
-            SYSTEM_STATE["scanner_last_run"] = now_dt.strftime("%H:%M:%S")
-            calendar_events = fetch_forex_factory_calendar()
-            auto_locking = any(ev.get("is_locking_now") for ev in calendar_events)
-            is_locked = SYSTEM_STATE["manual_news_lock"] or auto_locking
-
-            if USERS_DB:
-                active_tfs = set()
-                for u in USERS_DB.values():
-                    if u.get("chat_id") and u.get("auto_alert", True):
-                        active_tfs.add(u.get("preferred_tf", "5m").lower())
-
-                tf_data_cache = {}
-                for tf in active_tfs:
-                    try:
-                        tf_data_cache[tf] = fetch_server_gold_candles(tf)
-                    except Exception:
-                        pass
-
-                today_str = now_dt.strftime("%Y-%m-%d")
-
-                for email, user in list(USERS_DB.items()):
-                    chat_id = user.get("chat_id")
-                    if not chat_id or not user.get("auto_alert", True):
-                        continue
-
-                    start_t = user.get("start_time", "08:00")
-                    end_t = user.get("end_time", "22:00")
-
-                    if not is_within_schedule(now_dt, start_t, end_t):
-                        continue
-
-                    brief_key = f"{chat_id}_{today_str}"
-                    if user.get("alert_morning_news", True) and not SYSTEM_STATE["morning_brief_memory"].get(brief_key):
-                        morning_msg = build_morning_news_brief_message(now_dt, calendar_events, start_t, end_t)
-                        ok, _ = send_telegram_message(chat_id, morning_msg)
-                        if ok:
-                            SYSTEM_STATE["morning_brief_memory"][brief_key] = True
-
-                    if is_locked:
-                        continue
-
-                    tf = user.get("preferred_tf", "5m").lower()
-                    data = tf_data_cache.get(tf)
-                    if not data:
-                        continue
-
-                    # กฎเหล็ก: ถ้าเป็น Sideway ห้ามส่งสัญญาณเตือนเข้าออเดอร์เด็ดขาด
-                    if data["is_sideway"]:
-                        continue
-
-                    price = data["current_price"]
-                    fib_05 = data["fib_05"]
-                    entry_618 = data["entry"]
-                    direction = data["raw_direction"]
-                    rng = data["range"]
-                    tolerance = max(0.45, rng * 0.035)
-
-                    swing_key = f"{chat_id}_{tf}_{data['swing_high']}_{data['swing_low']}"
-                    mem = SYSTEM_STATE["last_alert_memory"].get(swing_key, {})
-
-                    if user.get("alert_05", True) and not mem.get("sent_05"):
-                        if abs(price - fib_05) <= tolerance:
-                            msg_05 = f"🔔 <b>[STAGE 1] ราคาแตะระดับ 0.5</b>\n📊 <b>XAUUSD ({tf.upper()})</b> • โครงสร้าง <b>{direction}</b>\nราคา: ${price:.2f}"
-                            ok, _ = send_telegram_message(chat_id, msg_05)
-                            if ok:
-                                mem["sent_05"] = True
-                                SYSTEM_STATE["last_alert_memory"][swing_key] = mem
-
-                    if user.get("alert_618", True) and not mem.get("sent_618"):
-                        if abs(price - entry_618) <= tolerance:
-                            msg_618 = f"🎯 <b>[STAGE 2] เข้า Golden Zone 61.8%</b>\n📊 <b>XAUUSD ({tf.upper()})</b> • โครงสร้าง <b>{direction}</b>\nEntry: ${entry_618:.2f} | SL: ${data['sl']:.2f}"
-                            ok, _ = send_telegram_message(chat_id, msg_618)
-                            if ok:
-                                mem["sent_618"] = True
-                                SYSTEM_STATE["last_alert_memory"][swing_key] = mem
-
-        except Exception as e:
-            print("Background Scanner Error:", e)
-        time.sleep(25)
-
-
-scanner_thread = threading.Thread(target=background_price_scanner, daemon=True)
-scanner_thread.start()
-
-
-# ==============================================================================
-# 6. FRONTEND HTML TEMPLATE
+# 5. FRONTEND HTML TEMPLATE
 # ==============================================================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -716,7 +556,7 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- MANUAL SWING OVERRIDE (แก้ปัญหาเลขไม่ตรงกับกราฟ OANDA) -->
+                    <!-- MANUAL SWING OVERRIDE -->
                     <div class="bg-[#06080E] p-3 rounded-lg border border-white/10 space-y-2 text-xs">
                         <div class="font-bold text-amber-400 flex items-center justify-between">
                             <span><i class="fa-solid fa-sliders mr-1"></i> กรอกราคาจากกราฟ OANDA เอง (Manual Override)</span>
@@ -766,7 +606,6 @@ HTML_TEMPLATE = """
         let liveTimeframeStore = {};
         let currentTfKey = '5m';
         let currentTvLoadedInterval = null;
-        let isNewsLocked = false;
         let allCalendarEvents = [];
 
         function calculateSniperMath(direction, swingHigh, swingLow) {
@@ -799,9 +638,7 @@ HTML_TEMPLATE = """
                 entry: entry.toFixed(2),
                 sl: sl.toFixed(2),
                 tp1: tp1.toFixed(2),
-                tp2: tp2.toFixed(2),
-                riskNum: risk,
-                riskDollar: risk.toFixed(2)
+                tp2: tp2.toFixed(2)
             };
         }
 
@@ -1024,7 +861,7 @@ HTML_TEMPLATE = """
                     fib_05: mathRes.fib05, entry: mathRes.entry, sl: mathRes.sl, tp1: mathRes.tp1, tp2: mathRes.tp2
                 })
             });
-            showToast(res.ok ? 'ส่งสัญญาณเข้า Telegram เรียบร้อย!' : 'ส่งไม่สำเร็จ (เช็ก Bot Token)');
+            showToast(res.ok ? 'ส่งสัญญาณเข้า Telegram เรียบร้อย!' : 'ส่งไม่สำเร็จ');
         }
 
         async function loadSystemState() {
@@ -1118,7 +955,7 @@ def trigger_morning_brief():
     data = request.json or {}
     chat_id = data.get("chat_id", "8948986514").strip()
     now_dt = datetime.now(TH_TZ)
-    msg = build_morning_news_brief_message(now_dt, fetch_forex_factory_calendar(), "08:00", "22:00")
+    msg = build_morning_news_brief_message(now_dt, fetch_forex_factory_calendar())
     ok, err = send_telegram_message(chat_id, msg)
     if ok:
         return jsonify({"status": "ok"})

@@ -1,7 +1,8 @@
-from datetime import datetime
 import os
-from flask import Flask, jsonify, render_template_string, request
-import requests
+import json
+import urllib.request
+from datetime import datetime
+from flask import Flask, render_template_string, request, jsonify
 
 app = Flask(__name__)
 
@@ -29,7 +30,7 @@ SYSTEM_STATE = {
             "tp2": "4009.62",
             "rr": "1:3",
             "status": "RUNNING",
-            "reason": "ราคาชน Golden Zone 61.8% + Order Block H1 กดดันตามเทรนด์หลัก",
+            "reason": "ราคาชน Golden Zone 61.8% + Order Block H1 กดดันตามเทรนด์หลัก"
         },
         {
             "id": 100,
@@ -43,8 +44,8 @@ SYSTEM_STATE = {
             "tp2": "3997.08",
             "rr": "1:3",
             "status": "TP2 HIT (+2,157 pts)",
-            "reason": "ย่อชน Fib 61.8% รอบสั้น ไหลลงตามโครงสร้าง Intraday Bearish",
-        },
+            "reason": "ย่อชน Fib 61.8% รอบสั้น ไหลลงตามโครงสร้าง Intraday Bearish"
+        }
     ],
     "economic_calendar": [
         {
@@ -54,7 +55,7 @@ SYSTEM_STATE = {
             "impact": "HIGH",
             "forecast": "0.3%",
             "previous": "0.3%",
-            "status": "AUTO-LOCK 19:00-20:00",
+            "status": "AUTO-LOCK 19:00-20:00"
         },
         {
             "time": "19:30",
@@ -63,7 +64,7 @@ SYSTEM_STATE = {
             "impact": "HIGH",
             "forecast": "215K",
             "previous": "212K",
-            "status": "AUTO-LOCK 19:00-20:00",
+            "status": "AUTO-LOCK 19:00-20:00"
         },
         {
             "time": "21:00",
@@ -72,7 +73,7 @@ SYSTEM_STATE = {
             "impact": "MEDIUM",
             "forecast": "52.4",
             "previous": "51.9",
-            "status": "REDUCE LOT 50%",
+            "status": "REDUCE LOT 50%"
         },
         {
             "time": "22:30",
@@ -81,9 +82,9 @@ SYSTEM_STATE = {
             "impact": "LOW",
             "forecast": "-",
             "previous": "-",
-            "status": "NORMAL TRADE",
-        },
-    ],
+            "status": "NORMAL TRADE"
+        }
+    ]
 }
 
 HTML_TEMPLATE = """
@@ -133,27 +134,19 @@ HTML_TEMPLATE = """
         ::-webkit-scrollbar-track { background: #03060c; }
         ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 9999px; }
         ::-webkit-scrollbar-thumb:hover { background: #f59e0b; }
-        @keyframes pulse-slow {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.45; }
-        }
-        .animate-pulse-slow { animation: pulse-slow 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
     </style>
 </head>
 <body class="antialiased min-h-screen p-3 md:p-5 selection:bg-amber-500 selection:text-slate-950">
     <div class="max-w-[1740px] mx-auto space-y-5">
 
-        <!-- ================================================================ -->
-        <!-- TOP INSTITUTIONAL NAVBAR & NEWS SHIELD STATUS                    -->
-        <!-- ================================================================ -->
+        <!-- TOP INSTITUTIONAL NAVBAR & NEWS SHIELD STATUS -->
         <header class="pro-card rounded-2xl p-4 lg:px-6 transition-all duration-300">
             <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
                 
-                <!-- Brand Identity -->
                 <div class="flex items-center gap-4">
                     <div class="relative group">
                         <div class="absolute -inset-1 bg-gradient-to-r from-amber-400 to-yellow-600 rounded-2xl blur opacity-40 group-hover:opacity-75 transition"></div>
-                        <div class="relative w-13 h-13 px-3.5 py-2.5 rounded-2xl bg-gradient-to-br from-amber-300 via-amber-500 to-yellow-600 flex flex-col items-center justify-center shadow-xl font-black text-slate-950 shrink-0">
+                        <div class="relative px-3.5 py-2.5 rounded-2xl bg-gradient-to-br from-amber-300 via-amber-500 to-yellow-600 flex flex-col items-center justify-center shadow-xl font-black text-slate-950 shrink-0">
                             <span class="text-[10px] tracking-tighter leading-none opacity-80">AI QUANT</span>
                             <span class="text-lg tracking-tight leading-none font-mono-num">XAU</span>
                         </div>
@@ -178,10 +171,7 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
 
-                <!-- Right Status Controls: Daily Bias + News Shield + Live Ticker -->
                 <div class="flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-between xl:justify-end">
-                    
-                    <!-- Daily Master Bias -->
                     <div class="bg-slate-950/90 border border-slate-800/90 px-3.5 py-2 rounded-xl flex items-center gap-2.5">
                         <div class="text-[11px] text-slate-400">
                             <span class="block text-[9px] uppercase tracking-wider text-slate-500 font-bold">DAILY MASTER BIAS</span>
@@ -191,7 +181,6 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- News Filter Shield Status + Toggle -->
                     <div id="news-shield-box" class="bg-emerald-950/40 border border-emerald-500/40 px-3.5 py-2 rounded-xl flex items-center gap-3 transition-all">
                         <div class="flex items-center gap-2">
                             <span id="shield-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
@@ -200,12 +189,11 @@ HTML_TEMPLATE = """
                                 <span id="shield-status-text" class="text-xs font-extrabold text-emerald-400">SAFE MODE (เปิดรับสัญญาณ)</span>
                             </div>
                         </div>
-                        <button onclick="toggleNewsLock()" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-[11px] font-bold text-slate-200 border border-slate-700 transition" title="จำลองสถานการณ์ข่าวแดงเพื่อล็อกระบบ">
+                        <button onclick="toggleNewsLock()" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-[11px] font-bold text-slate-200 border border-slate-700 transition">
                             <i class="fa-solid fa-shield-halved text-amber-400 mr-1"></i>สลับโหมดข่าวแดง
                         </button>
                     </div>
 
-                    <!-- Live XAUUSD Price Ticker -->
                     <div class="bg-slate-950/90 border border-amber-500/30 px-4 py-2 rounded-xl flex items-center gap-3">
                         <div class="text-right">
                             <span class="block text-[9px] uppercase tracking-wider text-amber-400/80 font-bold">XAUUSD SPOT</span>
@@ -213,14 +201,11 @@ HTML_TEMPLATE = """
                         </div>
                         <span class="px-1.5 py-0.5 text-[10px] font-mono-num font-bold bg-emerald-500/15 text-emerald-400 rounded border border-emerald-500/30">LIVE</span>
                     </div>
-
                 </div>
             </div>
         </header>
 
-        <!-- ================================================================ -->
-        <!-- KPI METRICS BAR (4 PRO CARDS)                                    -->
-        <!-- ================================================================ -->
+        <!-- KPI METRICS BAR -->
         <section class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div class="pro-card rounded-2xl p-4 flex items-center justify-between">
                 <div>
@@ -271,20 +256,14 @@ HTML_TEMPLATE = """
             </div>
         </section>
 
-        <!-- ================================================================ -->
-        <!-- MAIN WORKSPACE GRID (12 COLUMNS)                                 -->
-        <!-- ================================================================ -->
+        <!-- MAIN WORKSPACE GRID -->
         <div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
             
-            <!-- ============================================================ -->
-            <!-- LEFT COLUMN (7 COLS): DUAL-CHART + ECONOMIC CALENDAR + MACRO -->
-            <!-- ============================================================ -->
+            <!-- LEFT COLUMN (7 COLS) -->
             <div class="xl:col-span-7 space-y-5">
                 
                 <!-- 1. DUAL-CHART TERMINAL CARD -->
                 <div class="pro-card rounded-2xl p-4 md:p-5 space-y-4">
-                    
-                    <!-- Mode Switcher & Active TF Badge -->
                     <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 border-b border-slate-800/80 pb-3.5">
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 flex-1">
                             <button onclick="switchChartMode('sniper')" id="mode-btn-sniper" class="py-2.5 px-4 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-slate-950 shadow-lg shadow-amber-500/20">
@@ -298,7 +277,7 @@ HTML_TEMPLATE = """
                         </div>
 
                         <div class="flex items-center justify-between sm:justify-end gap-2">
-                            <button onclick="resetSniperZoom()" class="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 text-xs font-semibold transition flex items-center gap-1.5" title="จัดกึ่งกลางกราฟใหม่">
+                            <button onclick="resetSniperZoom()" class="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 text-xs font-semibold transition flex items-center gap-1.5">
                                 <i class="fa-solid fa-expand text-amber-400"></i> รีเซ็ตมุมมอง
                             </button>
                             <span id="chart-tf-indicator" class="px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/40 text-amber-300 text-xs font-black font-mono-num">
@@ -307,7 +286,6 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- Quick Copy Price Pills Above Chart -->
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                         <div onclick="copyPrice('val-entry')" class="group cursor-pointer p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 hover:border-cyan-400 transition flex justify-between items-center">
                             <div>
@@ -342,7 +320,6 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- Mode 1: Lightweight Chart Container -->
                     <div id="sniper-chart-wrapper" class="space-y-2">
                         <div class="flex flex-wrap justify-between items-center text-[11px] text-slate-400 px-1">
                             <span><i class="fa-solid fa-wand-magic-sparkles text-amber-400 mr-1"></i><strong>AI Auto-Plot:</strong> ขีดเส้น Entry 61.8%, SL 78.6%, TP1 (1:2) และ TP2 (1:3) อัตโนมัติตามโครงสร้างสวิง</span>
@@ -351,7 +328,6 @@ HTML_TEMPLATE = """
                         <div id="sniper-lw-chart" class="w-full h-[520px] rounded-xl overflow-hidden border border-slate-800/90 bg-[#050912]"></div>
                     </div>
 
-                    <!-- Mode 2: TradingView Studio Container -->
                     <div id="tv-chart-wrapper" class="hidden space-y-2">
                         <div class="flex flex-wrap justify-between items-center text-[11px] text-amber-300 px-1">
                             <span><i class="fa-solid fa-compass-drafting mr-1"></i><strong>TradingView Studio:</strong> ใช้แถบเครื่องมือซ้ายมือเพื่อวาด Fibonacci Retracement หรือ Order Block เพิ่มเติมได้เต็มรูปแบบ</span>
@@ -362,7 +338,7 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
 
-                <!-- 2. ECONOMIC CALENDAR & AUTO NEWS FILTER (FOREX FACTORY STYLE) -->
+                <!-- 2. ECONOMIC CALENDAR & AUTO NEWS FILTER -->
                 <div class="pro-card rounded-2xl p-5 space-y-4">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-800/80 pb-3.5 gap-2">
                         <div class="flex items-center gap-2.5">
@@ -378,13 +354,11 @@ HTML_TEMPLATE = """
                             </div>
                         </div>
 
-                        <!-- Add Custom News Button -->
                         <button onclick="document.getElementById('add-news-modal').classList.toggle('hidden')" class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-amber-400 transition">
                             <i class="fa-solid fa-plus mr-1"></i>เพิ่มตารางข่าว
                         </button>
                     </div>
 
-                    <!-- Hidden Form to Add News Event -->
                     <div id="add-news-modal" class="hidden bg-slate-950/90 p-3.5 rounded-xl border border-slate-800 grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs">
                         <input type="text" id="new-news-time" placeholder="เวลา (เช่น 20:30)" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono-num">
                         <input type="text" id="new-news-Event" placeholder="ชื่อข่าว (เช่น Non-Farm)" class="sm:col-span-2 bg-slate-900 border border-slate-700 rounded-lg p-2 text-white">
@@ -396,7 +370,6 @@ HTML_TEMPLATE = """
                         <button onclick="addNewsItem()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold rounded-lg p-2 transition">บันทึกข่าว</button>
                     </div>
 
-                    <!-- Economic Calendar Table -->
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse text-xs">
                             <thead>
@@ -409,13 +382,10 @@ HTML_TEMPLATE = """
                                     <th class="py-2.5 px-2 text-right">คำสั่ง AI Protection</th>
                                 </tr>
                             </thead>
-                            <tbody id="economic-calendar-body" class="divide-y divide-slate-800/60">
-                                <!-- Populated by JS -->
-                            </tbody>
+                            <tbody id="economic-calendar-body" class="divide-y divide-slate-800/60"></tbody>
                         </table>
                     </div>
 
-                    <!-- Macro Insight 3 Cards -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 text-xs">
                         <div class="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800/80 space-y-1.5">
                             <div class="flex justify-between items-center">
@@ -439,7 +409,7 @@ HTML_TEMPLATE = """
 
                         <div class="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800/80 space-y-1.5">
                             <div class="flex justify-between items-center">
-                                <span class="font-bold text-slate-200"><i class="fa-solid fa-shield-cat text-emerald-400 mr-1"></i>Win-Rate गणित (RR 1:3)</span>
+                                <span class="font-bold text-slate-200"><i class="fa-solid fa-shield-cat text-emerald-400 mr-1"></i>คณิตศาสตร์ RR 1:3</span>
                                 <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold text-[10px]">Low Drawdown</span>
                             </div>
                             <p class="text-slate-400 leading-relaxed text-[11px]">
@@ -451,12 +421,10 @@ HTML_TEMPLATE = """
 
             </div>
 
-            <!-- ============================================================ -->
-            <!-- RIGHT COLUMN (5 COLS): MTF + SNIPER CARD + DISPATCHER + FEED -->
-            <!-- ============================================================ -->
+            <!-- RIGHT COLUMN (5 COLS) -->
             <div class="xl:col-span-5 space-y-5">
                 
-                <!-- 1. MULTI-TIMEFRAME SELECTOR & MARKET STRUCTURE -->
+                <!-- 1. MULTI-TIMEFRAME SELECTOR -->
                 <div class="pro-card rounded-2xl p-5 space-y-4">
                     <div class="flex justify-between items-center border-b border-slate-800/80 pb-3">
                         <div>
@@ -468,7 +436,6 @@ HTML_TEMPLATE = """
                         </span>
                     </div>
 
-                    <!-- 6 Timeframe Buttons -->
                     <div class="grid grid-cols-3 sm:grid-cols-6 gap-2">
                         <button onclick="selectTimeframe('1m')" id="btn-1m" class="tf-btn py-2.5 px-2 rounded-xl text-xs font-bold font-mono-num border transition">1M</button>
                         <button onclick="selectTimeframe('5m')" id="btn-5m" class="tf-btn py-2.5 px-2 rounded-xl text-xs font-bold font-mono-num border transition">5M</button>
@@ -478,7 +445,6 @@ HTML_TEMPLATE = """
                         <button onclick="selectTimeframe('daily')" id="btn-daily" class="tf-btn py-2.5 px-2 rounded-xl text-xs font-bold font-mono-num border transition">DAILY</button>
                     </div>
 
-                    <!-- Market Structure Diagnostics -->
                     <div class="bg-slate-950/90 p-3.5 rounded-xl border border-slate-800/90 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
                         <div class="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60">
                             <span class="text-[10px] text-slate-400 block">โครงสร้างตลาด (Structure)</span>
@@ -495,7 +461,7 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
 
-                <!-- 2. GOLDEN ZONE SNIPER SETUP CARD + ONE-CLICK DISPATCH TO LINE/DISCORD -->
+                <!-- 2. GOLDEN ZONE SNIPER SETUP CARD + ONE-CLICK DISPATCH -->
                 <div class="pro-card-gold rounded-2xl p-5 space-y-4">
                     <div class="flex justify-between items-center border-b border-slate-800/80 pb-3">
                         <div>
@@ -505,7 +471,6 @@ HTML_TEMPLATE = """
                         <span id="setup-order-badge" class="px-3.5 py-1.5 rounded-xl text-xs font-black font-mono-num">--</span>
                     </div>
 
-                    <!-- Sideway Warning Box -->
                     <div id="sideway-warning" class="hidden bg-amber-500/15 border border-amber-500/50 rounded-xl p-3 text-xs text-amber-200 flex items-start gap-2.5">
                         <i class="fa-solid fa-triangle-exclamation text-amber-400 text-base mt-0.5"></i>
                         <div>
@@ -514,16 +479,13 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- Swing Range Info Bar -->
                     <div class="flex justify-between items-center bg-slate-950/90 px-3.5 py-2 rounded-xl border border-slate-800 text-xs">
                         <span class="text-slate-400"><i class="fa-solid fa-ruler-vertical text-amber-400 mr-1.5"></i>กรอบสวิงที่ใช้คำนวณ Fibonacci:</span>
                         <span id="setup-swing-info" class="font-mono-num font-bold text-amber-300">--</span>
                     </div>
 
-                    <!-- 4 Sniper Level Cards -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <!-- ENTRY 61.8% -->
-                        <div class="bg-gradient-to-br from-cyan-950/50 via-slate-950 to-slate-950 p-3.5 rounded-xl border border-cyan-500/40 relative overflow-hidden">
+                        <div class="bg-gradient-to-br from-cyan-950/50 via-slate-950 to-slate-950 p-3.5 rounded-xl border border-cyan-500/40">
                             <div class="flex justify-between items-center">
                                 <span class="text-xs font-extrabold text-cyan-300">🔵 ENTRY (Fib 61.8%)</span>
                                 <span class="text-[10px] bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded font-bold">Golden Zone</span>
@@ -532,8 +494,7 @@ HTML_TEMPLATE = """
                             <p class="text-[11px] text-slate-400 mt-0.5">จุดตั้ง Pending Order ไม้เดียวเน้นๆ</p>
                         </div>
 
-                        <!-- STOP LOSS 78.6% -->
-                        <div class="bg-gradient-to-br from-rose-950/50 via-slate-950 to-slate-950 p-3.5 rounded-xl border border-rose-500/40 relative overflow-hidden">
+                        <div class="bg-gradient-to-br from-rose-950/50 via-slate-950 to-slate-950 p-3.5 rounded-xl border border-rose-500/40">
                             <div class="flex justify-between items-center">
                                 <span class="text-xs font-extrabold text-rose-300">🔴 STOP LOSS (78.6%)</span>
                                 <span id="val-risk-pts" class="text-[10px] font-mono-num bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded font-bold">Risk: --</span>
@@ -542,8 +503,7 @@ HTML_TEMPLATE = """
                             <p class="text-[11px] text-slate-400 mt-0.5">จุดยอมแพ้หากหลุดโครงสร้างสวิง</p>
                         </div>
 
-                        <!-- TP1 (RR 1:2) -->
-                        <div class="bg-gradient-to-br from-emerald-950/50 via-slate-950 to-slate-950 p-3.5 rounded-xl border border-emerald-500/40 relative overflow-hidden">
+                        <div class="bg-gradient-to-br from-emerald-950/50 via-slate-950 to-slate-950 p-3.5 rounded-xl border border-emerald-500/40">
                             <div class="flex justify-between items-center">
                                 <span class="text-xs font-extrabold text-emerald-300">🟢 TAKE PROFIT 1 (1:2)</span>
                                 <span id="val-tp1-pts" class="text-[10px] font-mono-num bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-bold">+--</span>
@@ -552,8 +512,7 @@ HTML_TEMPLATE = """
                             <p class="text-[11px] text-slate-400 mt-0.5">แบ่งปิดทำกำไร 50% และบังหน้าทุน</p>
                         </div>
 
-                        <!-- TP2 (RR 1:3) -->
-                        <div class="bg-gradient-to-br from-amber-950/50 via-slate-950 to-slate-950 p-3.5 rounded-xl border border-amber-500/50 relative overflow-hidden">
+                        <div class="bg-gradient-to-br from-amber-950/50 via-slate-950 to-slate-950 p-3.5 rounded-xl border border-amber-500/50">
                             <div class="flex justify-between items-center">
                                 <span class="text-xs font-extrabold text-amber-300">🟡 TAKE PROFIT 2 (1:3)</span>
                                 <span id="val-tp2-pts" class="text-[10px] font-mono-num bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-bold">+--</span>
@@ -563,7 +522,6 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- AI Reasoning Box -->
                     <div class="space-y-1">
                         <span class="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                             <i class="fa-solid fa-microchip"></i> เหตุผลประกอบสัญญาณจาก AI (ส่งแนบไปกับ LINE & Discord):
@@ -571,20 +529,18 @@ HTML_TEMPLATE = """
                         <textarea id="setup-reason" rows="2" class="w-full text-xs text-slate-200 bg-slate-950/90 p-3 rounded-xl border border-slate-800 focus:border-amber-500 outline-none leading-relaxed"></textarea>
                     </div>
 
-                    <!-- News Lock Alert Inside Dispatch Panel -->
                     <div id="dispatch-lock-warning" class="hidden p-3 rounded-xl bg-rose-500/20 border border-rose-500/50 text-rose-200 text-xs flex items-center gap-2.5">
                         <i class="fa-solid fa-ban text-rose-400 text-base"></i>
                         <span><strong>ระบบล็อกการส่งสัญญาณชั่วคราว!</strong> ขณะนี้อยู่ในโหมดเฝ้าระวังข่าวแรง (High Impact News Shield) เพื่อความปลอดภัยของพอร์ตลูกค้า</span>
                     </div>
 
-                    <!-- Broadcast Signal Button -->
                     <button id="broadcast-btn" onclick="broadcastCurrentSignal()" class="w-full py-3.5 px-4 rounded-xl font-extrabold text-xs md:text-sm bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 shadow-xl shadow-emerald-500/20 transition flex items-center justify-center gap-2">
                         <i class="fa-solid fa-satellite-dish"></i>
                         <span>ยิงสัญญาณชุดนี้เข้า LINE OA • Discord • Python Bot ทันที</span>
                     </button>
                 </div>
 
-                <!-- 3. CUSTOM SWING TUNER (MANUAL OVERRIDE) -->
+                <!-- 3. CUSTOM SWING TUNER -->
                 <div class="pro-card rounded-2xl p-5 space-y-3">
                     <div class="flex justify-between items-center border-b border-slate-800/80 pb-2.5">
                         <div>
@@ -630,12 +586,7 @@ HTML_TEMPLATE = """
                         <span class="text-[11px] text-slate-400 font-mono-num" id="feed-counter-label">2 รายการล่าสุด</span>
                     </div>
 
-                    <!-- Tab 1: Live Signal Feed -->
-                    <div id="right-tab-feed" class="space-y-2.5 max-h-[290px] overflow-y-auto pr-1">
-                        <!-- Populated by JS -->
-                    </div>
-
-                    <!-- Tab 2: Matrix Overview -->
+                    <div id="right-tab-feed" class="space-y-2.5 max-h-[290px] overflow-y-auto pr-1"></div>
                     <div id="right-tab-matrix" class="hidden space-y-2 max-h-[290px] overflow-y-auto pr-1">
                         <div id="matrix-overview-list" class="space-y-2 text-xs"></div>
                     </div>
@@ -645,19 +596,14 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
-    <!-- Toast Notification -->
     <div id="toast-notify" class="fixed bottom-5 right-5 hidden bg-emerald-500 text-slate-950 px-4 py-3 rounded-xl font-extrabold text-xs shadow-2xl z-50 flex items-center gap-2">
         <i class="fa-solid fa-circle-check text-base"></i>
         <span id="toast-notify-text">ดำเนินการสำเร็จ!</span>
     </div>
 
-    <!-- TradingView External Script -->
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
 
     <script>
-        // ==================================================================
-        // 1. คณิตศาสตร์ Sniper: Entry 61.8%, SL 78.6%, TP1 (1:2), TP2 (1:3)
-        // ==================================================================
         function calculateSniperMath(direction, swingHigh, swingLow) {
             const range = swingHigh - swingLow;
             let entry, sl, risk, tp1, tp2;
@@ -677,23 +623,15 @@ HTML_TEMPLATE = """
             }
 
             return {
-                entryNum: entry,
-                slNum: sl,
-                tp1Num: tp1,
-                tp2Num: tp2,
-                entry: entry.toFixed(2),
-                sl: sl.toFixed(2),
-                tp1: tp1.toFixed(2),
-                tp2: tp2.toFixed(2),
+                entryNum: entry, slNum: sl, tp1Num: tp1, tp2Num: tp2,
+                entry: entry.toFixed(2), sl: sl.toFixed(2),
+                tp1: tp1.toFixed(2), tp2: tp2.toFixed(2),
                 riskDollar: risk.toFixed(2),
                 reward1Dollar: (risk * 2).toFixed(2),
                 reward2Dollar: (risk * 3).toFixed(2)
             };
         }
 
-        // ==================================================================
-        // 2. ข้อมูลโครงสร้างแต่ละ Timeframe
-        // ==================================================================
         const timeframeConfigs = {
             '1m': {
                 label: '1 นาที (1M)', tvInterval: '1', stepSec: 60,
@@ -757,9 +695,6 @@ HTML_TEMPLATE = """
             }
         };
 
-        // ==================================================================
-        // 3. ระบบกราฟโหมดที่ 1: Lightweight Charts + Auto Price Lines
-        // ==================================================================
         let lwChart = null;
         let candleSeries = null;
         let activePriceLines = [];
@@ -784,9 +719,7 @@ HTML_TEMPLATE = """
                     vertLines: { color: 'rgba(30, 41, 59, 0.45)' },
                     horzLines: { color: 'rgba(30, 41, 59, 0.45)' }
                 },
-                crosshair: {
-                    mode: LightweightCharts.CrosshairMode.Normal
-                },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
                 rightPriceScale: {
                     borderColor: '#1e293b',
                     autoScale: true,
@@ -800,12 +733,9 @@ HTML_TEMPLATE = """
             });
 
             candleSeries = lwChart.addCandlestickSeries({
-                upColor: '#10b981',
-                downColor: '#f43f5e',
-                borderUpColor: '#10b981',
-                borderDownColor: '#f43f5e',
-                wickUpColor: '#10b981',
-                wickDownColor: '#f43f5e'
+                upColor: '#10b981', downColor: '#f43f5e',
+                borderUpColor: '#10b981', borderDownColor: '#f43f5e',
+                wickUpColor: '#10b981', wickDownColor: '#f43f5e'
             });
 
             window.addEventListener('resize', () => {
@@ -944,9 +874,6 @@ HTML_TEMPLATE = """
             if (lwChart) lwChart.timeScale().fitContent();
         }
 
-        // ==================================================================
-        // 4. สลับโหมดกราฟ & แท็บด้านขวา
-        // ==================================================================
         function switchChartMode(mode) {
             currentChartMode = mode;
             const sniperWrap = document.getElementById('sniper-chart-wrapper');
@@ -1011,9 +938,6 @@ HTML_TEMPLATE = """
             }
         }
 
-        // ==================================================================
-        // 5. อัปเดต Dashboard & เลือกไทม์เฟรม
-        // ==================================================================
         function updateDashboardAndChart(calcDir, swingHigh, swingLow, cfg) {
             const mathRes = calculateSniperMath(calcDir, swingHigh, swingLow);
 
@@ -1143,9 +1067,6 @@ HTML_TEMPLATE = """
             });
         }
 
-        // ==================================================================
-        // 6. ระบบเชื่อมต่อ API หลังบ้าน: ปฏิทินข่าว, News Shield, ยิงสัญญาณ
-        // ==================================================================
         async function loadSystemState() {
             try {
                 const res = await fetch('/api/system-state');
@@ -1331,13 +1252,12 @@ HTML_TEMPLATE = """
             setTimeout(() => toast.classList.add('hidden'), 2600);
         }
 
-        // จำลองการขยับของราคา Spot เล็กน้อยให้ดูมีชีวิตชีวา
         setInterval(() => {
             const el = document.getElementById('live-ticker-price');
             const base = 3995.80;
             const jitter = (Math.random() - 0.5) * 1.4;
             const price = (base + jitter).toFixed(2);
-            el.innerText = '$' + price.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            el.innerText = '$' + price.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
         }, 2500);
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -1354,18 +1274,15 @@ HTML_TEMPLATE = """
 </html>
 """
 
-
 # ==============================================================================
-# BACKEND API ENDPOINTS (สำหรับหน้าเว็บ, บอท MT5 Python, Discord & LINE OA)
+# BACKEND API ENDPOINTS (ใช้ urllib.request ในตัว Python ไม่ต้องลง requests เพิ่ม)
 # ==============================================================================
-@app.route("/")
+@app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
 
-
-@app.route("/api/system-state", methods=["GET"])
+@app.route('/api/system-state', methods=['GET'])
 def get_system_state():
-    """ดึงสถานะทั้งหมดไปแสดงบนหน้าเว็บ และให้บอท Python ของคุณดึงค่าไปเช็กก่อนออกออเดอร์"""
     return jsonify({
         "safe_to_trade": not SYSTEM_STATE["news_locked"],
         "news_locked": SYSTEM_STATE["news_locked"],
@@ -1373,13 +1290,11 @@ def get_system_state():
         "latest_signal": SYSTEM_STATE["latest_signal"],
         "signal_history": SYSTEM_STATE["signal_history"],
         "economic_calendar": SYSTEM_STATE["economic_calendar"],
-        "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     })
 
-
-@app.route("/api/toggle-news-lock", methods=["POST"])
+@app.route('/api/toggle-news-lock', methods=['POST'])
 def toggle_news_lock():
-    """สลับโหมดล็อกสัญญาณช่วงข่าวแดง (News Shield)"""
     SYSTEM_STATE["news_locked"] = not SYSTEM_STATE["news_locked"]
     SYSTEM_STATE["lock_reason"] = (
         "งดเทรดชั่วคราวเนื่องจากมีข่าวเศรษฐกิจความรุนแรงสูง (High Impact News)"
@@ -1389,19 +1304,17 @@ def toggle_news_lock():
     return jsonify({
         "status": "ok",
         "news_locked": SYSTEM_STATE["news_locked"],
-        "lock_reason": SYSTEM_STATE["lock_reason"],
+        "lock_reason": SYSTEM_STATE["lock_reason"]
     })
 
-
-@app.route("/api/add-news", methods=["POST"])
+@app.route('/api/add-news', methods=['POST'])
 def add_news():
-    """เพิ่มรายการข่าวเศรษฐกิจลงในตาราง"""
     data = request.json or {}
     impact = data.get("impact", "HIGH")
     status_map = {
         "HIGH": "AUTO-LOCK ±30 MIN",
         "MEDIUM": "REDUCE LOT 50%",
-        "LOW": "NORMAL TRADE",
+        "LOW": "NORMAL TRADE"
     }
     new_item = {
         "time": data.get("time", "20:30"),
@@ -1410,26 +1323,95 @@ def add_news():
         "impact": impact,
         "forecast": "-",
         "previous": "-",
-        "status": status_map.get(impact, "NORMAL TRADE"),
+        "status": status_map.get(impact, "NORMAL TRADE")
     }
     SYSTEM_STATE["economic_calendar"].insert(0, new_item)
-    return jsonify(
-        {"status": "ok", "economic_calendar": SYSTEM_STATE["economic_calendar"]}
-    )
+    return jsonify({"status": "ok", "economic_calendar": SYSTEM_STATE["economic_calendar"]})
 
-
-@app.route("/api/send-signal", methods=["POST"])
+@app.route('/api/send-signal', methods=['POST'])
 def send_signal():
-    """รับสัญญาณ Golden Zone 61.8% จากหน้าเว็บแล้วยิงเข้า LINE OA / Discord / เก็บให้บอท MT5"""
     if SYSTEM_STATE["news_locked"]:
-        return (
-            jsonify({
-                "status": "blocked",
-                "message": "ระบบล็อกการส่งสัญญาณเนื่องจากอยู่ในช่วงข่าวแรง (News Shield Active)",
-            }),
-            403,
-        )
+        return jsonify({
+            "status": "blocked",
+            "message": "ระบบล็อกการส่งสัญญาณเนื่องจากอยู่ในช่วงข่าวแรง (News Shield Active)"
+        }), 403
 
     data = request.json or {}
     sig = {
         "id": len(SYSTEM_STATE["signal_history"]) + 101,
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "symbol": data.get("symbol", "XAUUSD"),
+        "tf": data.get("tf", "1H"),
+        "direction": data.get("direction", "SELL"),
+        "entry": data.get("entry", "4086.63"),
+        "sl": data.get("sl", "4112.30"),
+        "tp1": data.get("tp1", "4035.29"),
+        "tp2": data.get("tp2", "4009.62"),
+        "rr": "1:3",
+        "status": "BROADCASTED",
+        "reason": data.get("reason", "Golden Zone 61.8% Setup")
+    }
+
+    SYSTEM_STATE["latest_signal"] = sig
+    SYSTEM_STATE["signal_history"].insert(0, sig)
+
+    icon = "🔻" if sig["direction"] == "SELL" else "🟢"
+    msg = (
+        f"🎯 **GOLD AI SNIPER PRO (FIB 61.8%)**\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"📊 สินทรัพย์: **{sig['symbol']}** (TF: {sig['tf']})\n"
+        f"⚡ คำสั่ง: {icon} **{sig['direction']} LIMIT**\n"
+        f"🔵 จุดเข้า (Entry 61.8%): `${sig['entry']}`\n"
+        f"🔴 ตัดขาดทุน (SL 78.6%): `${sig['sl']}`\n"
+        f"🟢 เป้าที่ 1 (TP1 1:2): `${sig['tp1']}`\n"
+        f"🟡 เป้าหลัก (TP2 1:3): `${sig['tp2']}`\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🧠 เหตุผล AI: {sig['reason']}\n"
+        f"🛡️ *คุมความเสี่ยง 1-1.5% ต่อไม้ และงดเทรดช่วงข่าวแดง*"
+    )
+
+    notify_discord(msg)
+    notify_line(msg)
+
+    return jsonify({
+        "status": "success",
+        "latest_signal": sig,
+        "signal_history": SYSTEM_STATE["signal_history"]
+    })
+
+def notify_discord(text):
+    if not DISCORD_WEBHOOK_URL:
+        return
+    try:
+        payload = json.dumps({"content": text}).encode("utf-8")
+        req = urllib.request.Request(
+            DISCORD_WEBHOOK_URL,
+            data=payload,
+            headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        print("Discord Webhook Error:", e)
+
+def notify_line(text):
+    if not LINE_CHANNEL_ACCESS_TOKEN:
+        return
+    try:
+        payload = json.dumps({
+            "messages": [{"type": "text", "text": text.replace("**", "")}]
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.line.me/v2/bot/message/broadcast",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
+            }
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        print("LINE Broadcast Error:", e)
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
